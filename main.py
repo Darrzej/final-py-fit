@@ -4,7 +4,7 @@ import requests
 from utils.database import (
     create_tables, seed_exercises_from_csv, add_user, get_user,
     get_exercises, add_user_exercise, get_user_exercises,
-    update_stat, get_user_stats
+    update_stat, get_user_stats, remove_user_exercise
 )
 
 # Setup
