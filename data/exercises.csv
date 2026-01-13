@@ -1,6 +1,13 @@
-name,muscle_group,type
+name,muscle_group,category
 Bench Press,Chest,Strength
 Squat,Legs,Strength
 Deadlift,Back,Strength
-Pull Up,Back,Bodyweight
-Shoulder Press,Shoulders,Strength
+Overhead Press,Shoulders,Strength
+Pull-up,Back,Bodyweight
+Lat Pulldown,Back,Machine
+Leg Press,Legs,Machine
+Romanian Deadlift,Legs,Strength
+Incline Bench Press,Chest,Strength
+Dumbbell Row,Back,Strength
+Bicep Curl,Arms,Isolation
+Tricep Pushdown,Arms,Isolation
