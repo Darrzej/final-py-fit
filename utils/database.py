@@ -139,3 +139,25 @@ def get_user_stats(user_id):
     """, conn)
     conn.close()
     return df
+
+def user_has_exercise(user_id, exercise_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 1 FROM user_exercises
+        WHERE user_id = ? AND exercise_id = ?
+    """, (user_id, exercise_id))
+    exists = cursor.fetchone()
+    conn.close()
+    return exists is not None
+
+
+def remove_user_exercise(user_id, exercise_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM user_exercises
+        WHERE user_id = ? AND exercise_id = ?
+    """, (user_id, exercise_id))
+    conn.commit()
+    conn.close()

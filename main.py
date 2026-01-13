@@ -59,26 +59,52 @@ tabs = st.tabs(["🏋️ Exercises", "📊 Stats", "🤖 AI Coach"])
 # --- EXERCISE SELECTION ---
 with tabs[0]:
     st.header("Select Your Exercises")
+
     exercises = get_exercises()
+    user_exercises = get_user_exercises(user_id)
+    user_ex_ids = set(user_exercises["id"].tolist())
+
     for _, row in exercises.iterrows():
-        if st.button(f"Add {row['name']}"):
-            add_user_exercise(user_id, row["id"])
-            st.success(f"{row['name']} added to your program")
+        if row["id"] in user_ex_ids:
+            st.success(f"✔ {row['name']} already in your program")
+        else:
+            if st.button(f"Add {row['name']}", key=f"add_{row['id']}"):
+                add_user_exercise(user_id, row["id"])
+                st.rerun()
 
     st.subheader("Your Program")
-    st.dataframe(get_user_exercises(user_id))
+
+    for _, ex in user_exercises.iterrows():
+        col1, col2 = st.columns([3,1])
+        col1.write(f"🏋️ {ex['name']} ({ex['muscle_group']})")
+        if col2.button("❌ Remove", key=f"remove_{ex['id']}"):
+            remove_user_exercise(user_id, ex["id"])
+            st.rerun()
+
 
 # --- STATS ---
 with tabs[1]:
     st.header("Update Your PRs")
+
     user_exercises = get_user_exercises(user_id)
 
     for _, ex in user_exercises.iterrows():
-        pr = st.number_input(f"{ex['name']} PR (kg)", 0.0, 500.0, step=2.5)
-        reps = st.number_input(f"{ex['name']} reps", 1, 20)
-        if st.button(f"Save {ex['name']}"):
+        pr = st.number_input(
+            f"{ex['name']} PR (kg)",
+            0.0, 500.0,
+            step=2.5,
+            key=f"pr_{ex['id']}"
+        )
+
+        reps = st.number_input(
+            f"{ex['name']} reps",
+            1, 20,
+            key=f"reps_{ex['id']}"
+        )
+
+        if st.button(f"Save {ex['name']}", key=f"save_{ex['id']}"):
             update_stat(user_id, ex["id"], pr, reps, pd.Timestamp.now().isoformat())
-            st.success("Saved")
+            st.success(f"{ex['name']} updated")
 
     st.subheader("Your Stats")
     st.dataframe(get_user_stats(user_id))
