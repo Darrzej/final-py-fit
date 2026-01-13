@@ -1,0 +1,10 @@
+numpy
+pandas
+matplotlib
+plotly
+streamlit
+fastapi
+uvicorn
+pydantic
+python-dotenv
+beautifulsoup4
