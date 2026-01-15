@@ -161,3 +161,35 @@ def remove_user_exercise(user_id, exercise_id):
     """, (user_id, exercise_id))
     conn.commit()
     conn.close()
+
+def get_all_users():
+    conn = get_connection()
+    df = pd.read_sql("SELECT id, username, age, height, weight, goal, frequency FROM users", conn)
+    conn.close()
+    return df
+
+
+def delete_user(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_stats WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM user_exercises WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def export_database():
+    conn = get_connection()
+    users = pd.read_sql("SELECT * FROM users", conn)
+    exercises = pd.read_sql("SELECT * FROM exercises", conn)
+    user_exercises = pd.read_sql("SELECT * FROM user_exercises", conn)
+    user_stats = pd.read_sql("SELECT * FROM user_stats", conn)
+
+    users.to_csv("backup_users.csv", index=False)
+    exercises.to_csv("backup_exercises.csv", index=False)
+    user_exercises.to_csv("backup_user_exercises.csv", index=False)
+    user_stats.to_csv("backup_user_stats.csv", index=False)
+
+    conn.close()
+

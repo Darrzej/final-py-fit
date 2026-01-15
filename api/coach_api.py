@@ -29,3 +29,28 @@ def coach_report(data: CoachRequest):
 
     return {"report": feedback}
 
+from utils.database import get_user_stats, update_stat, remove_user_exercise
+
+@app.get("/stats/{user_id}")
+def get_stats(user_id: int):
+    return get_user_stats(user_id).to_dict(orient="records")
+
+
+@app.post("/stats")
+def add_stat(data: dict):
+    update_stat(
+        data["user_id"],
+        data["exercise_id"],
+        data["pr"],
+        data["reps"],
+        data["date"]
+    )
+    return {"status": "created"}
+
+
+@app.delete("/exercise/{user_id}/{exercise_id}")
+def delete_exercise(user_id: int, exercise_id: int):
+    remove_user_exercise(user_id, exercise_id)
+    return {"status": "deleted"}
+
+

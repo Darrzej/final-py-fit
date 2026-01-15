@@ -4,7 +4,8 @@ import requests
 from utils.database import (
     create_tables, seed_exercises_from_csv, add_user, get_user,
     get_exercises, add_user_exercise, get_user_exercises,
-    update_stat, get_user_stats, remove_user_exercise
+    update_stat, get_user_stats, remove_user_exercise,
+    get_all_users, delete_user, export_database
 )
 
 # Setup
@@ -54,7 +55,8 @@ if st.session_state.user is None:
 user = st.session_state.user
 user_id = user[0]
 
-tabs = st.tabs(["🏋️ Exercises", "📊 Stats", "🤖 AI Coach"])
+tabs = st.tabs(["🏋️ Exercises", "📊 Stats", "🤖 AI Coach", "🛠 Admin"])
+
 
 # --- EXERCISE SELECTION ---
 with tabs[0]:
@@ -133,4 +135,33 @@ with tabs[2]:
         for line in res.json()["report"]:
             st.info(line)
     except:
-        st.warning("Start the FastAPI server to get AI coaching.")
+        st.warning("Start the FastAPI server to get AI coaching.")\
+        
+with tabs[3]:
+    st.header("🛠 Admin Dashboard")
+
+    # Make first user admin
+    is_admin = user_id == 1
+
+    if not is_admin:
+        st.warning("Admin access only.")
+        st.stop()
+
+    st.subheader("All Users")
+    users_df = get_all_users()
+    st.dataframe(users_df)
+
+    st.subheader("Delete User")
+    delete_id = st.number_input("User ID to delete", min_value=1, step=1)
+
+    if st.button("Delete User"):
+        delete_user(delete_id)
+        st.success("User deleted")
+        st.rerun()
+
+    st.subheader("Backup Database")
+
+    if st.button("Export Database to CSV"):
+        export_database()
+        st.success("Database exported to CSV files")
+
