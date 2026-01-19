@@ -1,19 +1,33 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import List, Dict
 import pandas as pd
 from models.coach import Coach
-from models.user import User
+from models.user import User as UserModel
 
-app = FastAPI(title="FitAI Coach API")
+app = FastAPI(title="FitAI Professional API")
+
+# --- Pydantic Schemas ---
+class UserSchema(BaseModel):
+    id: int
+    username: str
+    age: int
+    height: float
+    weight: float
+    goal: str
+    frequency: int
 
 class CoachRequest(BaseModel):
-    user: dict
-    stats: list
+    user: UserSchema
+    stats: List[Dict]
 
+# --- Endpoints ---
 @app.post("/coach")
 def coach_report(data: CoachRequest):
-    user_data = data.user
-    user = User(
+    user_data = data.user.dict()
+    
+    # Instantiate User Object (OOP)
+    user_obj = UserModel(
         id=user_data["id"],
         username=user_data["username"],
         age=user_data["age"],
@@ -24,33 +38,13 @@ def coach_report(data: CoachRequest):
     )
 
     stats_df = pd.DataFrame(data.stats)
-    coach = Coach(user, stats_df)
+    
+    # Logic now resides purely in the Coach model based on user metrics
+    coach = Coach(user_obj, stats_df)
     feedback = coach.analyze()
 
     return {"report": feedback}
 
-from utils.database import get_user_stats, update_stat, remove_user_exercise
-
-@app.get("/stats/{user_id}")
-def get_stats(user_id: int):
-    return get_user_stats(user_id).to_dict(orient="records")
-
-
-@app.post("/stats")
-def add_stat(data: dict):
-    update_stat(
-        data["user_id"],
-        data["exercise_id"],
-        data["pr"],
-        data["reps"],
-        data["date"]
-    )
-    return {"status": "created"}
-
-
-@app.delete("/exercise/{user_id}/{exercise_id}")
-def delete_exercise(user_id: int, exercise_id: int):
-    remove_user_exercise(user_id, exercise_id)
-    return {"status": "deleted"}
-
-
+@app.get("/health")
+def health():
+    return {"status": "online"}

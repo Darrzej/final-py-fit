@@ -1,15 +1,20 @@
 import sqlite3
 import pandas as pd
+import os
+from dotenv import load_dotenv
+from utils.auth import hash_password, verify_password
 
-DB_PATH = "data/fitai.db"
+# Load environment variables
+load_dotenv()
+DB_PATH = os.getenv("DB_PATH", "data/fitai.db")
 
 def get_connection():
+    """Establishes a connection to the SQLite database."""
     return sqlite3.connect(DB_PATH)
 
 def create_tables():
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,26 +25,20 @@ def create_tables():
         weight REAL,
         goal TEXT,
         frequency INTEGER
-    )
-    """)
-
+    )""")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS exercises (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
         muscle_group TEXT,
         category TEXT
-    )
-    """)
-
+    )""")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_exercises (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         exercise_id INTEGER
-    )
-    """)
-
+    )""")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,29 +47,50 @@ def create_tables():
         pr REAL,
         reps INTEGER,
         updated_at TEXT
-    )
-    """)
-
+    )""")
     conn.commit()
     conn.close()
 
 def seed_exercises_from_csv():
     conn = get_connection()
     cursor = conn.cursor()
-
-    df = pd.read_csv("data/exercises.csv")
-
-    for _, row in df.iterrows():
-        cursor.execute("""
-            INSERT INTO exercises (name, muscle_group, category)
-            SELECT ?, ?, ?
-            WHERE NOT EXISTS (
-                SELECT 1 FROM exercises WHERE name = ?
-            )
-        """, (row["name"], row["muscle_group"], row["category"], row["name"]))
-
-    conn.commit()
+    cursor.execute("SELECT COUNT(*) FROM exercises")
+    if cursor.fetchone()[0] == 0:
+        try:
+            df = pd.read_csv("data/exercises.csv")
+            df.to_sql("exercises", conn, if_exists="append", index=False)
+        except FileNotFoundError:
+            print("Warning: exercises.csv not found. Skipping seed.")
     conn.close()
+
+def add_user(username, password, age, height, weight, goal, frequency):
+    conn = get_connection()
+    cursor = conn.cursor()
+    # SECURE: Hash the password before storing
+    hashed = hash_password(password)
+    try:
+        cursor.execute("""
+            INSERT INTO users (username, password, age, height, weight, goal, frequency)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (username, hashed, age, height, weight, goal, frequency))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def get_user(username, password):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    user = cursor.fetchone()
+    conn.close()
+    
+    # SECURE: Verify the hashed password
+    if user and verify_password(user[2], password):
+        return user
+    return None
 
 def get_exercises():
     conn = get_connection()
@@ -78,43 +98,21 @@ def get_exercises():
     conn.close()
     return df
 
-def add_user(username, password, age, height, weight, goal, frequency):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO users (username, password, age, height, weight, goal, frequency)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (username, password, age, height, weight, goal, frequency))
-    conn.commit()
-    conn.close()
-
-def get_user(username, password):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM users WHERE username = ? AND password = ?
-    """, (username, password))
-    user = cursor.fetchone()
-    conn.close()
-    return user
-
 def add_user_exercise(user_id, exercise_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO user_exercises (user_id, exercise_id)
-        VALUES (?, ?)
-    """, (user_id, exercise_id))
+    cursor.execute("INSERT INTO user_exercises (user_id, exercise_id) VALUES (?, ?)", (user_id, exercise_id))
     conn.commit()
     conn.close()
 
 def get_user_exercises(user_id):
     conn = get_connection()
-    df = pd.read_sql(f"""
+    query = """
         SELECT e.* FROM exercises e
-        JOIN user_exercises ue ON ue.exercise_id = e.id
-        WHERE ue.user_id = {user_id}
-    """, conn)
+        JOIN user_exercises ue ON e.id = ue.exercise_id
+        WHERE ue.user_id = ?
+    """
+    df = pd.read_sql(query, conn, params=(user_id,))
     conn.close()
     return df
 
@@ -130,35 +128,21 @@ def update_stat(user_id, exercise_id, pr, reps, date):
 
 def get_user_stats(user_id):
     conn = get_connection()
-    df = pd.read_sql(f"""
-        SELECT e.name, us.pr, us.reps, us.updated_at
+    query = """
+        SELECT e.name, us.pr, us.reps, us.updated_at 
         FROM user_stats us
         JOIN exercises e ON us.exercise_id = e.id
-        WHERE us.user_id = {user_id}
-        ORDER BY us.updated_at DESC
-    """, conn)
+        WHERE us.user_id = ?
+        ORDER BY us.updated_at ASC
+    """
+    df = pd.read_sql(query, conn, params=(user_id,))
     conn.close()
     return df
-
-def user_has_exercise(user_id, exercise_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT 1 FROM user_exercises
-        WHERE user_id = ? AND exercise_id = ?
-    """, (user_id, exercise_id))
-    exists = cursor.fetchone()
-    conn.close()
-    return exists is not None
-
 
 def remove_user_exercise(user_id, exercise_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        DELETE FROM user_exercises
-        WHERE user_id = ? AND exercise_id = ?
-    """, (user_id, exercise_id))
+    cursor.execute("DELETE FROM user_exercises WHERE user_id = ? AND exercise_id = ?", (user_id, exercise_id))
     conn.commit()
     conn.close()
 
@@ -167,7 +151,6 @@ def get_all_users():
     df = pd.read_sql("SELECT id, username, age, height, weight, goal, frequency FROM users", conn)
     conn.close()
     return df
-
 
 def delete_user(user_id):
     conn = get_connection()
@@ -178,18 +161,9 @@ def delete_user(user_id):
     conn.commit()
     conn.close()
 
-
 def export_database():
     conn = get_connection()
     users = pd.read_sql("SELECT * FROM users", conn)
-    exercises = pd.read_sql("SELECT * FROM exercises", conn)
-    user_exercises = pd.read_sql("SELECT * FROM user_exercises", conn)
-    user_stats = pd.read_sql("SELECT * FROM user_stats", conn)
-
-    users.to_csv("backup_users.csv", index=False)
-    exercises.to_csv("backup_exercises.csv", index=False)
-    user_exercises.to_csv("backup_user_exercises.csv", index=False)
-    user_stats.to_csv("backup_user_stats.csv", index=False)
-
+    users.to_csv("data/users_export.csv", index=False)
     conn.close()
-
+    return "Data exported to data/users_export.csv"
