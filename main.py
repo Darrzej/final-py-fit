@@ -7,181 +7,157 @@ from datetime import datetime
 from dotenv import load_dotenv
 import os
 
-# Database and Scraper utilities
 from utils.database import (
     create_tables, seed_exercises_from_csv, add_user, get_user,
     get_exercises, add_user_exercise, get_user_exercises,
     update_stat, get_user_stats, remove_user_exercise,
-    get_all_users, export_database
+    get_all_users, export_database, add_nutrition_log, 
+    get_user_nutrition, promote_user, delete_user
 )
 
-# Configuration
 load_dotenv()
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
-# Setup Page
-st.set_page_config("FitAI Dashboard", "💪", layout="wide")
+st.set_page_config("FitAI Pro", "💪", layout="wide")
 create_tables()
 seed_exercises_from_csv()
 
-# --- AUTHENTICATION FLOW ---
 if "user" not in st.session_state:
     st.session_state.user = None
 
 if st.session_state.user is None:
-    st.title("🏋️ FitAI — Smart Gym Tracker")
-    st.subheader("Achieve your goals with data-driven coaching.")
+    st.title("🏋️ FitAI — Advanced Training System")
+    t1, t2 = st.tabs(["Login", "Register"])
     
-    auth_tab1, auth_tab2 = st.tabs(["Login", "Register"])
-    
-    with auth_tab1:
-        u = st.text_input("Username", key="login_u")
-        p = st.text_input("Password", type="password", key="login_p")
+    with t1:
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
-            user = get_user(u, p)
-            if user:
-                st.session_state.user = user
+            user_data = get_user(u, p)
+            if user_data:
+                st.session_state.user = user_data
                 st.rerun()
             else:
-                st.error("Invalid username or password.")
+                st.error("Invalid credentials.")
 
-    with auth_tab2:
-        ru = st.text_input("Choose Username", key="reg_u")
-        rp = st.text_input("Choose Password", type="password", key="reg_p")
-        col1, col2 = st.columns(2)
-        age = col1.number_input("Age", 15, 100, 25)
-        height = col2.number_input("Height (cm)", 100, 250, 175)
-        weight = col1.number_input("Weight (kg)", 30, 300, 70)
-        goal = col2.selectbox("Fitness Goal", ["bulk", "cut", "strength"])
-        freq = col1.slider("Training Days/Week", 1, 7, 3)
-        
+    with t2:
+        ru = st.text_input("New Username")
+        rp = st.text_input("New Password", type="password")
+        c1, c2 = st.columns(2)
+        age = c1.number_input("Age", 15, 100, 25)
+        height = c2.number_input("Height (cm)", 100, 250, 175)
+        weight = c1.number_input("Weight (kg)", 30, 300, 70)
+        goal = c2.selectbox("Goal", ["bulk", "cut", "strength"])
+        freq = c1.slider("Frequency", 1, 7, 3)
         if st.button("Create Account", use_container_width=True):
-            if add_user(ru, rp, age, height, weight, goal, freq):
-                st.success("Account created successfully! You can now login.")
-            else:
-                st.error("Username already exists.")
+            all_u = get_all_users()
+            is_first = 1 if len(all_u) == 0 else 0
+            if add_user(ru, rp, age, height, weight, goal, freq, is_admin=is_first):
+                st.success("Account created! You can now login.")
     st.stop()
 
-# --- LOGGED IN STATE ---
+# --- APP DATA ---
 user = st.session_state.user
-user_id, username, _, age, height, weight, goal, frequency = user
+u_id, u_name, _, u_age, u_height, u_weight, u_goal, u_freq, u_admin = user
 
-# --- DYNAMIC & INTERACTIVE SIDEBAR ---
 with st.sidebar:
-    st.markdown(f"## 👤 {username}")
-    st.markdown(f"**Goal:** {goal.capitalize()}")
-    st.divider()
+    st.markdown(f"## 👤 {u_name}")
+    if u_admin:
+        st.caption("🛡️ Administrator Access")
     
-    # Advanced NumPy: BMI Calculation
-    # Formula: kg / m^2
-    bmi = np.round(weight / ((height / 100) ** 2), 1)
-    
-    st.metric("Body Mass Index (BMI)", bmi)
-    
-    # Progress Overview
-    stats_df = get_user_stats(user_id)
-    st.write(f"📊 **Total Logs:** {len(stats_df)}")
+    bmi = np.round(u_weight / ((u_height/100)**2), 1)
+    st.metric("Body BMI", bmi)
     
     st.divider()
-    
-    # Display Daily Tip via API Scraper Logic
-    try:
-        # Re-importing scraper logic for the sidebar
-        from api.coach_api import get_dynamic_tip
-        st.info(get_dynamic_tip())
-    except:
-        st.info("💡 Keep pushing! Consistency is the secret to growth.")
+    st.subheader("🍎 Nutrition Log")
+    cal = st.number_input("Calories", 0, 10000, 2500)
+    prot = st.number_input("Protein (g)", 0, 500, 140)
+    if st.button("Save Daily Log", use_container_width=True):
+        add_nutrition_log(u_id, cal, prot, datetime.now().strftime("%Y-%m-%d"))
+        st.toast("Nutrition updated!")
 
-    st.markdown("---")
+    st.divider()
     if st.button("🚪 Logout", use_container_width=True):
         st.session_state.user = None
         st.rerun()
 
-# --- MAIN DASHBOARD TABS ---
-st.title("Welcome Back!")
-tabs = st.tabs(["📋 My Routine", "📊 Progress Analysis", "🤖 AI Coach", "🛠 Admin"])
+# Dynamic Tab Logic
+tab_titles = ["📋 Program", "📈 Analytics", "🤖 AI Coach"]
+if u_admin:
+    tab_titles.append("🛠 Admin Panel")
 
-# 1. PROGRAM TAB (CRUD: Add, Read, Log, Delete)
+tabs = st.tabs(tab_titles)
+
 with tabs[0]:
     st.header("Training Routine")
-    my_ex = get_user_exercises(user_id)
+    my_ex = get_user_exercises(u_id)
     all_ex = get_exercises()
     my_ex_ids = set(my_ex["id"].tolist())
 
-    with st.expander("➕ Add Exercises to your Program"):
-        search = st.text_input("Search exercises...")
+    with st.expander("🔍 Add New Exercises"):
+        search = st.text_input("Filter exercises...")
         for _, ex in all_ex.iterrows():
             if ex["id"] not in my_ex_ids and (search.lower() in ex["name"].lower()):
-                if st.button(f"Add {ex['name']} ({ex['muscle_group']})", key=f"add_{ex['id']}"):
-                    add_user_exercise(user_id, ex["id"])
+                if st.button(f"Add {ex['name']}", key=f"a_{ex['id']}"):
+                    add_user_exercise(u_id, ex["id"])
                     st.rerun()
 
-    st.divider()
-    st.subheader("Current Program")
-    if my_ex.empty:
-        st.info("Your routine is currently empty. Add exercises from the section above.")
-    else:
-        for _, ex in my_ex.iterrows():
-            c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
-            c1.markdown(f"### {ex['name']}")
-            pr_val = c2.number_input("Weight (kg)", 0.0, 500.0, step=2.5, key=f"w_{ex['id']}")
-            reps_val = c3.number_input("Reps", 1, 50, 8, key=f"r_{ex['id']}")
-            
-            if c4.button("Log PR", key=f"log_{ex['id']}"):
-                update_stat(user_id, ex["id"], pr_val, reps_val, datetime.now().strftime("%Y-%m-%d %H:%M"))
-                st.toast(f"Updated {ex['name']}!")
+    for _, ex in my_ex.iterrows():
+        c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
+        c1.write(f"### {ex['name']}")
+        w = c2.number_input("kg", 0.0, 500.0, step=2.5, key=f"w_{ex['id']}")
+        r = c3.number_input("reps", 1, 50, 8, key=f"r_{ex['id']}")
+        if c4.button("Log", key=f"l_{ex['id']}"):
+            update_stat(u_id, ex["id"], w, r, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            st.toast("PR Saved!")
+        if c5.button("🗑️", key=f"d_{ex['id']}"):
+            remove_user_exercise(u_id, ex["id"])
+            st.rerun()
 
-            # DELETE OPTION
-            if c5.button("🗑️", key=f"del_{ex['id']}", help="Remove from routine"):
-                remove_user_exercise(user_id, ex["id"])
-                st.rerun()
-
-# 2. PROGRESS TAB (Data Visualization)
 with tabs[1]:
-    st.header("Visual Strength Analysis")
+    stats_df = get_user_stats(u_id)
     if not stats_df.empty:
-        # Plotly Express Line Chart
-        fig = px.line(
-            stats_df, 
-            x="updated_at", 
-            y="pr", 
-            color="name", 
-            markers=True,
-            title="Personal Record Trends",
-            labels={"pr": "Weight (kg)", "updated_at": "Log Date"},
-            template="plotly_dark"
-        )
+        fig = px.line(stats_df, x="updated_at", y="pr", color="name", markers=True, template="plotly_dark")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("No performance data found. Start logging workouts in the Program tab.")
+        st.info("Log some sessions to see your progress.")
 
-# 3. AI COACH TAB (FastAPI Integration)
 with tabs[2]:
-    st.header("AI Coach Report")
-    if st.button("Generate My Report"):
+    if st.button("Generate AI Feedback"):
+        nutri_df = get_user_nutrition(u_id)
         payload = {
-            "user": {
-                "id": user_id, "username": username, "age": age, 
-                "height": height, "weight": weight, "goal": goal, 
-                "frequency": frequency
-            },
-            "stats": stats_df.to_dict(orient="records")
+            "user": {"id": u_id, "username": u_name, "age": u_age, "height": u_height, 
+                     "weight": u_weight, "goal": u_goal, "frequency": u_freq},
+            "stats": stats_df.to_dict(orient="records"),
+            "nutrition": nutri_df.to_dict(orient="records")
         }
         try:
-            response = requests.post(f"{API_URL}/coach", json=payload)
-            report = response.json()["report"]
-            for message in report:
-                st.info(message)
+            res = requests.post(f"{API_URL}/coach", json=payload)
+            for msg in res.json()["report"]:
+                st.info(msg)
         except:
-            st.error("Could not connect to the Coach API. Please ensure the FastAPI server is running.")
+            st.error("API Offline.")
 
-# 4. ADMIN TAB
-with tabs[3]:
-    if user_id == 1:
-        st.subheader("Global User Database")
-        st.dataframe(get_all_users(), use_container_width=True)
-        if st.button("Download CSV Backup"):
+if u_admin:
+    with tabs[3]:
+        st.header("👑 Admin Panel")
+        all_u = get_all_users()
+        st.dataframe(all_u, use_container_width=True)
+        
+        c_p, c_d = st.columns(2)
+        with c_p:
+            p_id = st.number_input("Promote User ID", step=1, min_value=1)
+            if st.button("Promote to Admin"):
+                promote_user(p_id)
+                st.success(f"User {p_id} promoted!")
+                st.rerun()
+        with c_d:
+            d_id = st.number_input("Delete User ID", step=1, min_value=1)
+            if st.button("Confirm User Deletion", type="primary"):
+                delete_user(d_id)
+                st.warning(f"User {d_id} removed.")
+                st.rerun()
+        
+        if st.button("Export Database to CSV"):
             msg = export_database()
             st.success(msg)
-    else:
-        st.warning("Admin access required for this section.")

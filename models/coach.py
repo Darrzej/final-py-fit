@@ -1,53 +1,59 @@
 import numpy as np
+import pandas as pd
 
 class Coach:
-    def __init__(self, user, stats_df):
+    def __init__(self, user, stats_df, nutrition_df=None):
         self.user = user
         self.stats = stats_df
+        self.nutrition = nutrition_df
 
     def analyze(self):
         feedback = []
 
         if self.stats.empty:
-            return ["👋 Welcome! Please log your exercise PRs to receive a personalized physiological analysis."]
+            return ["👋 Welcome! Please log your exercise PRs and nutrition to receive a physiological analysis."]
 
-        # 1. Biological Profile Analysis (Age, Height, Weight)
-        # Using NumPy for BMI calculation
+        # 1. Biological Analysis (Age, Height, Weight) - Using NumPy
         bmi = self.user.weight / ((self.user.height / 100) ** 2)
         
         if bmi < 18.5:
-            feedback.append(f"📋 Body Metrics: Your BMI is {round(bmi, 1)}. To support muscle protein synthesis, ensure a caloric surplus with at least 2g of protein per kg of body weight.")
+            feedback.append(f"📋 Body Metrics: BMI is {round(bmi, 1)} (Underweight). Focus on caloric density and progressive overload.")
         elif bmi > 25:
-            feedback.append(f"📋 Body Metrics: With a BMI of {round(bmi, 1)}, prioritize compound lifts (Squats, Deadlifts) to maximize metabolic demand.")
+            feedback.append(f"📋 Body Metrics: BMI is {round(bmi, 1)} (High). Prioritize compound lifts to maximize metabolic cost.")
 
-        # 2. Age-Specific Recovery Advice
         if self.user.age > 40:
-            feedback.append("🦴 Recovery: At age 40+, central nervous system recovery takes longer. Ensure 48 hours of rest between hitting the same muscle group.")
+            feedback.append("🦴 Age Factor: At 40+, prioritize joint health and ensure 48-72 hours of recovery between heavy sessions.")
         elif self.user.age < 22:
-            feedback.append("⚡ Development: Your natural growth hormone levels are peak. This is an optimal window for high-volume hypertrophy training.")
+            feedback.append("⚡ Development: Peak hormonal window detected. Optimal time for high-volume hypertrophy.")
 
-        # 3. Performance & Relative Strength Analysis
+        # 2. Nutrition Analysis (New Metrics)
+        if self.nutrition is not None and not self.nutrition.empty:
+            avg_protein = self.nutrition['protein'].mean()
+            avg_calories = self.nutrition['calories'].mean()
+            protein_target = self.user.weight * 2.0  # Scientific floor: 2g/kg
+            
+            if avg_protein < protein_target:
+                feedback.append(f"🥩 Nutrition: Average protein ({round(avg_protein)}g) is below the required {round(protein_target)}g for your weight.")
+            else:
+                feedback.append(f"✅ Nutrition: Protein intake is optimal for muscle protein synthesis.")
+
+            if self.user.goal == "bulk" and avg_calories < 2800:
+                feedback.append("🍚 Bulking: Your calorie average suggests you are not in a sufficient surplus to maximize gains.")
+            elif self.user.goal == "cut" and avg_calories > 2200:
+                feedback.append("🥗 Cutting: Watch your caloric floor; ensure a 300-500 calorie deficit for sustainable fat loss.")
+
+        # 3. Performance & Relative Strength
         for exercise in self.stats["name"].unique():
-            # Get history for this exercise sorted by date
             ex_df = self.stats[self.stats["name"] == exercise].sort_values(by="updated_at")
             latest = ex_df.iloc[-1]
-            
-            # Calculate Relative Strength (Weight Lifted / Body Weight)
             rel_strength = latest['pr'] / self.user.weight
 
             if rel_strength < 0.75:
-                feedback.append(f"🔬 {exercise}: Your relative strength is {round(rel_strength, 2)}x bodyweight. Focus on linear progression—add 2.5kg every session.")
+                feedback.append(f"🔬 {exercise}: Relative strength is {round(rel_strength, 2)}x bodyweight. Focus on linear progression.")
             elif rel_strength > 1.5:
-                feedback.append(f"🏅 {exercise}: Advanced strength detected ({round(rel_strength, 2)}x bodyweight). Transition to periodized blocks (Heavy/Light weeks) to avoid overtraining.")
+                feedback.append(f"🏅 {exercise}: Advanced strength level ({round(rel_strength, 2)}x bodyweight). Use periodization.")
 
-            # Plateau Detection
-            if len(ex_df) > 1:
-                previous = ex_df.iloc[-2]
-                if latest['pr'] <= previous['pr']:
-                    feedback.append(f"⚠️ Warning: Your {exercise} has stalled. Decrease weight by 10% for one week (Deload) to reset your strength curve.")
-
-        # 4. Goal-Frequency Alignment
-        if self.user.goal == "bulk" and self.user.frequency < 4:
-            feedback.append("🍗 Goal Optimization: For effective bulking, a training frequency of 3 days may be insufficient. Aim for 4-5 days to increase weekly volume.")
+            if len(ex_df) > 1 and latest['pr'] <= ex_df.iloc[-2]['pr']:
+                feedback.append(f"⚠️ Warning: {exercise} has stalled. Check if recovery or nutrition is the limiting factor.")
 
         return feedback
