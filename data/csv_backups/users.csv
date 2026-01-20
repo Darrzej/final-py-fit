@@ -1,4 +1,3 @@
 id,username,password,age,height,weight,goal,frequency,is_admin
 1,Darsej,0ba6e27176d2dd7e$5164cf1dba277989c8157ff1d993511b1e2cb4c6e1b4924d8cc32d5bddc98e8b,17,187.0,87.0,bulk,5,1
 2,Leon,9aefd382b0f557ea$01c4d7aed58f9b6029e7173b73b6aa1ac39bd1d787faa1786422ce0526728aa3,17,186.0,61.0,bulk,1,1
-3,Norik,7ec69397cd3479b2$b972c15744604bb10d081b39423517dfbba0e9cf7b4b7fea5b08309bf73332b2,15,175.0,55.0,bulk,2,0
