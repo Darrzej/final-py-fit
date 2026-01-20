@@ -1,0 +1,13 @@
+id,name,muscle_group,category
+1,Bench Press,Chest,Strength
+2,Squat,Legs,Strength
+3,Deadlift,Back,Strength
+4,Overhead Press,Shoulders,Strength
+5,Pull-up,Back,Bodyweight
+6,Lat Pulldown,Back,Machine
+7,Leg Press,Legs,Machine
+8,Romanian Deadlift,Legs,Strength
+9,Incline Bench Press,Chest,Strength
+10,Dumbbell Row,Back,Strength
+11,Bicep Curl,Arms,Isolation
+12,Tricep Pushdown,Arms,Isolation
