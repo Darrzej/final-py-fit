@@ -6,43 +6,29 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
-import os
-
-# Import our custom OOP classes
-from utils.database import DatabaseManager
 from utils.scraper import FitnessScraper
 
-# --- CONFIG & INITIALIZATION ---
+API_URL = "http://127.0.0.1:8000"
+scraper = FitnessScraper()
+
 st.set_page_config(page_title="FitAI Ultimate", page_icon="💪", layout="wide")
 
-# Initialize OOP Objects
-db = DatabaseManager()
-scraper = FitnessScraper()
-API_URL = "http://127.0.0.1:8000"
-
-# Ensure exercises are seeded in the DB
-db.seed_exercises()
-
-# Session State for Authentication
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# --- AUTHENTICATION UI ---
+# --- AUTHENTICATION ---
 if st.session_state.user is None:
     st.title("🏋️ FitAI — Professional Training System")
     t1, t2 = st.tabs(["Login", "Register"])
-    
     with t1:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         if st.button("Login"):
-            user_data = db.get_user(u, p)
-            if user_data:
-                st.session_state.user = user_data
+            res = requests.post(f"{API_URL}/auth/login", json={"username": u, "password": p})
+            if res.status_code == 200:
+                st.session_state.user = res.json()
                 st.rerun()
-            else:
-                st.error("Invalid credentials.")
-                
+            else: st.error("Invalid credentials.")
     with t2:
         ru = st.text_input("New Username")
         rp = st.text_input("New Password", type="password")
@@ -51,191 +37,162 @@ if st.session_state.user is None:
         height = c2.number_input("Height (cm)", 100, 250, 175)
         weight = c1.number_input("Weight (kg)", 30, 300, 70)
         goal = c2.selectbox("Goal", ["bulk", "cut", "strength"])
-        freq = c1.slider("Training Frequency (days/week)", 1, 7, 3)
+        freq = c1.slider("Frequency", 1, 7, 3)
         if st.button("Create Account"):
-            all_u = db.get_all_users()
-            is_first = 1 if len(all_u) == 0 else 0
-            if db.add_user(ru, rp, age, height, weight, goal, freq, is_admin=is_first):
-                st.success("Account created successfully! Please login.")
+            payload = {"username":ru, "password":rp, "age":age, "height":height, "weight":weight, "goal":goal, "frequency":freq}
+            requests.post(f"{API_URL}/auth/register", json=payload)
+            st.success("Account created successfully!")
     st.stop()
 
-# --- USER DATA EXTRACTION ---
-u_id, u_name, _, u_age, u_height, u_weight, u_goal, u_freq, u_admin = st.session_state.user
+user = st.session_state.user
+u_id = user['id']
 
-# --- SIDEBAR (Scraping & Quick Log) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.markdown(f"## 👤 {u_name}")
-    st.metric("Body BMI", np.round(u_weight / ((u_height/100)**2), 1))
+    st.markdown(f"## 👤 {user['username']}")
+    st.metric("Body BMI", np.round(user['weight'] / ((user['height']/100)**2), 1))
     st.divider()
-    
     st.subheader("🍎 Quick Nutrition Log")
-    cal = st.number_input("Calories (kcal)", 0, 10000, 2500)
-    prot = st.number_input("Protein (g)", 0, 500, 140)
+    cal = st.number_input("Calories", 0, 10000, 2500)
+    prot = st.number_input("Protein", 0, 500, 140)
     if st.button("Save Daily Log"):
-        db.add_nutrition_log(u_id, cal, prot, datetime.now().strftime("%Y-%m-%d"))
+        requests.post(f"{API_URL}/log/nutrition", json={"user_id": u_id, "calories": cal, "protein": prot, "date": datetime.now().strftime("%Y-%m-%d")})
         st.toast("Saved & Mirrored to CSV")
-    
     st.divider()
-    st.subheader("🌐 Live Fitness News (Scraped)")
-    with st.spinner("Fetching latest news..."):
-        headlines = scraper.get_latest_articles()
-        for h in headlines:
-            st.caption(f"📍 {h}")
-    
-    st.divider()
+    with st.spinner("Fetching news..."):
+        for h in scraper.get_latest_articles(): st.caption(f"📍 {h}")
     if st.button("🚪 Logout"):
         st.session_state.user = None
         st.rerun()
 
-# --- MAIN INTERFACE TABS ---
-tab_titles = ["📋 Program", "📈 Analytics", "🤖 AI Coach", "🧮 Calculators"]
-if u_admin:
-    tab_titles.append("🛠 Admin Panel")
-tabs = st.tabs(tab_titles)
+# --- TABS ---
+titles = ["📋 Program", "📈 Analytics", "🤖 AI Coach", "🧮 Calculators"]
+if user['is_admin']: titles.append("🛠 Admin Panel")
+tabs = st.tabs(titles)
 
-# --- TAB 0: PROGRAM ---
+# TAB 0: PROGRAM
 with tabs[0]:
     st.header("Training Routine")
-    my_ex = db.get_user_exercises(u_id)
-    all_ex = db.get_exercises()
-    my_ex_ids = set(my_ex["id"].tolist())
+    my_ex = requests.get(f"{API_URL}/exercises/user/{u_id}").json()
+    all_ex_list = requests.get(f"{API_URL}/exercises/all").json()
+    my_ex_ids = {e['id'] for e in my_ex}
     
-    with st.expander("🔍 Add Exercises to your Routine"):
-        search = st.text_input("Search exercises...")
-        for _, ex in all_ex.iterrows():
-            if ex["id"] not in my_ex_ids and (search.lower() in ex["name"].lower()):
+    with st.expander("🔍 Add Exercises"):
+        search = st.text_input("Search...")
+        for ex in all_ex_list:
+            if ex['id'] not in my_ex_ids and search.lower() in ex['name'].lower():
                 if st.button(f"Add {ex['name']}", key=f"a_{ex['id']}"):
-                    db.add_user_exercise(u_id, ex["id"])
+                    requests.post(f"{API_URL}/exercises/add", json={"user_id": u_id, "exercise_id": ex['id']})
                     st.rerun()
-                    
-    for _, ex in my_ex.iterrows():
+    
+    for ex in my_ex:
         c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
         c1.write(f"### {ex['name']}")
         w = c2.number_input("kg", 0.0, 500.0, step=2.5, key=f"w_{ex['id']}")
         r = c3.number_input("reps", 1, 50, 8, key=f"r_{ex['id']}")
         if c4.button("Log", key=f"l_{ex['id']}"):
-            db.update_stat(u_id, ex["id"], w, r, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            requests.post(f"{API_URL}/log/workout", json={"user_id": u_id, "exercise_id": ex['id'], "weight": w, "reps": r, "date": datetime.now().strftime("%Y-%m-%d")})
             st.toast("PR Logged!")
         if c5.button("🗑️", key=f"d_{ex['id']}"):
-            db.remove_user_exercise(u_id, ex["id"])
+            requests.post(f"{API_URL}/exercises/remove", json={"user_id": u_id, "exercise_id": ex['id']})
             st.rerun()
 
-# --- TAB 1: ANALYTICS ---
+# TAB 1: ANALYTICS
 with tabs[1]:
-    st.header("📊 Performance & Nutrition Analytics")
-    
-    with st.expander("❓ How to read these charts"):
-        st.write("""
-        - **Nutrition Chart:** Tracks your fuel. Orange line is Calories, Blue line is Protein.
-        - **Strength Chart:** Tracks your Power. Each line is a different exercise PR over time.
-        - **History Table:** View the raw data you've logged daily.
-        """)
+    st.header("📊 Performance Analytics")
+    nutri_data = requests.get(f"{API_URL}/data/nutrition/{u_id}").json()
+    if nutri_data:
+        ndf = pd.DataFrame(nutri_data)
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(go.Scatter(x=ndf['date'], y=ndf['total_calories'], name="Calories", line=dict(color='#FFA500', width=3)), secondary_y=False)
+        fig.add_trace(go.Scatter(x=ndf['date'], y=ndf['total_protein'], name="Protein", line=dict(color='#00BFFF', width=3)), secondary_y=True)
+        fig.update_layout(template="plotly_dark", height=400)
+        st.plotly_chart(fig, use_container_width=True)
 
-    # 1. NUTRITION TRENDS
-    st.subheader("🍎 Nutrition & Energy")
-    nutri_df = db.get_daily_nutrition_summary(u_id)
-    if not nutri_df.empty:
-        fig_nutri = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_nutri.add_trace(go.Scatter(x=nutri_df['date'], y=nutri_df['total_calories'], name="Calories", 
-                                      line=dict(color='#FFA500', width=3)), secondary_y=False)
-        fig_nutri.add_trace(go.Scatter(x=nutri_df['date'], y=nutri_df['total_protein'], name="Protein", 
-                                      line=dict(color='#00BFFF', width=3)), secondary_y=True)
-        fig_nutri.update_layout(template="plotly_dark", height=400, hovermode="x unified")
-        fig_nutri.update_yaxes(title_text="Calories (kcal)", secondary_y=False)
-        fig_nutri.update_yaxes(title_text="Protein (g)", secondary_y=True)
-        st.plotly_chart(fig_nutri, use_container_width=True)
-        
-        with st.expander("📄 View Daily Intake Log (History)"):
-            st.dataframe(nutri_df.rename(columns={"date": "Date", "total_calories": "Calories", "total_protein": "Protein"}), use_container_width=True)
-    else:
-        st.info("No nutrition data yet.")
+    stats_data = requests.get(f"{API_URL}/data/stats/{u_id}").json()
+    if stats_data:
+        sdf = pd.DataFrame(stats_data)
+        st.plotly_chart(px.line(sdf, x="updated_at", y="pr", color="name", markers=True, template="plotly_dark"), use_container_width=True)
 
-    st.divider()
-
-    # 2. STRENGTH PROGRESS
-    st.subheader("🏋️ Strength Progress (PRs)")
-    stats_df = db.get_user_stats(u_id)
-    if not stats_df.empty:
-        fig_pr = px.line(stats_df, x="updated_at", y="pr", color="name", markers=True, template="plotly_dark",
-                        labels={"pr": "Weight (kg)", "updated_at": "Date"})
-        st.plotly_chart(fig_pr, use_container_width=True)
-        
-        with st.expander("🏆 All-Time Best Lifts"):
-            best = stats_df.groupby('name')['pr'].max().reset_index()
-            st.table(best)
-
-# --- TAB 2: AI COACH (API Endpoint 1) ---
-# ... (Imports and Auth remain the same as the previous full version)
-
-with tabs[2]: # AI COACH (API Endpoint 1)
+# TAB 2: AI COACH (ENHANCED)
+with tabs[2]:
     st.header("🤖 FitAI Intelligence Report")
-    st.write("Get a scientific and tactical breakdown of your training.")
     
-    if st.button("Generate Performance Report", type="primary"):
-        with st.spinner("Analyzing your database..."):
-            stats_df = db.get_user_stats(u_id)
-            nutri_df = db.get_daily_nutrition_summary(u_id)
+    if st.button("Generate Performance & Nutrition Report", type="primary"):
+        with st.spinner("Analyzing performance trends and metabolic logs..."):
+            s_data = requests.get(f"{API_URL}/data/stats/{u_id}").json()
+            n_data = requests.get(f"{API_URL}/data/nutrition/{u_id}").json()
             
             payload = {
-                "username": u_name,
-                "weight": u_weight,
-                "goal": u_goal,
-                "stats": stats_df.to_dict(orient="records"),
-                "nutrition": nutri_df.to_dict(orient="records")
+                "username": user['username'], 
+                "weight": float(user['weight']), 
+                "age": int(user['age']),         
+                "goal": str(user['goal']), 
+                "stats": s_data, 
+                "nutrition": n_data
             }
             
-            try:
-                res = requests.post(f"{API_URL}/coach", json=payload)
-                if res.status_code == 200:
-                    report_data = res.json().get("report", [])
-                    st.success(f"### Coach Analysis for {u_name}")
-                    
-                    for item in report_data:
-                        if item['type'] == "strength":
-                            st.info(item['msg'])
-                        elif item['type'] == "success":
-                            st.success(item['msg'])
-                        elif item['type'] == "warning":
-                            st.warning(item['msg'])
-                        elif item['type'] == "plateau":
-                            st.error(item['msg'])
-                        else: # "info" type for general tips
-                            st.write(item['msg'])
-                            
-                    st.balloons()
+            res = requests.post(f"{API_URL}/coach", json=payload).json()
+        
+        st.divider()
+        
+        if not res.get('report'):
+            st.info("I need more data to provide a tactical analysis. Log at least one workout and one meal.")
+        else:
+            # We group them for better UI flow
+            st.subheader("📋 Tactical Feedback")
+            for item in res['report']:
+                if item['type'] == "strength":
+                    st.info(item['msg'], icon="💪")
+                elif item['type'] == "warning":
+                    st.warning(item['msg'], icon="⚠️")
+                elif item['type'] == "plateau":
+                    st.error(item['msg'], icon="🛑")
+                elif item['type'] == "success":
+                    st.success(item['msg'], icon="✅")
                 else:
-                    st.error("The API Brain is offline or returned an error.")
-            except Exception as e:
-                st.error(f"Connection Failed: {e}")
-
-# ... (Calculators and Analytics remain intact)
-
-# --- TAB 3: CALCULATORS (API Endpoint 2) ---
+                    st.chat_message("assistant").write(item['msg'])
+            
+            st.balloons() 
+# TAB 3: CALCULATORS
 with tabs[3]:
-    st.header("🧮 Strength Predictor (1RM)")
-    c1, c2 = st.columns(2)
-    calc_w = c1.number_input("Weight Lifted (kg)", 1.0, 500.0, 100.0)
-    calc_r = c2.number_input("Reps", 1, 20, 5)
-    
-    if st.button("Predict Max Strength"):
-        try:
-            res = requests.post(f"{API_URL}/predict_1rm", json={"weight": calc_w, "reps": calc_r})
-            if res.status_code == 200:
-                data = res.json()
-                st.metric("Estimated One-Rep Max", f"{data['one_rm']} kg")
-                st.subheader("Training Zones")
-                z_cols = st.columns(3)
-                for i, (zone, val) in enumerate(data['zones'].items()):
-                    z_cols[i].metric(zone, f"{val} kg")
-        except: st.error("Calculator API Offline.")
+    st.header("🧮 1RM Predictor")
+    cw, cr = st.columns(2)
+    w_val = cw.number_input("Weight (kg)", 1.0, 500.0, 100.0)
+    r_val = cr.number_input("Reps", 1, 20, 5)
+    if st.button("Predict Max"):
+        res = requests.post(f"{API_URL}/predict_1rm", json={"weight": w_val, "reps": r_val}).json()
+        st.metric("Estimated 1RM", f"{res['one_rm']} kg")
+        z_cols = st.columns(3)
+        for i, (zone, val) in enumerate(res['zones'].items()):
+            z_cols[i].metric(zone, f"{val} kg")
 
-# --- TAB 4: ADMIN ---
-if u_admin:
+# TAB 4: ADMIN PANEL (WITH DELETE)
+if user['is_admin']:
     with tabs[4]:
         st.header("👑 Admin Panel")
-        all_users = db.get_all_users()
-        st.dataframe(all_users, use_container_width=True)
-        uid_to_mod = st.number_input("Target User ID", step=1)
-        if st.button("Promote to Admin"):
-            db.promote_user(uid_to_mod)
-            st.success(f"User {uid_to_mod} promoted.")
+        all_users = requests.get(f"{API_URL}/admin/users").json()
+        st.dataframe(pd.DataFrame(all_users), use_container_width=True)
+        
+        st.divider()
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            st.subheader("Promote")
+            target_p = st.number_input("User ID to Promote", step=1, key="p_id")
+            if st.button("Promote to Admin"):
+                requests.post(f"{API_URL}/admin/promote/{target_p}")
+                st.success("User promoted.")
+                st.rerun()
+                
+        with c2:
+            st.subheader("Delete")
+            target_d = st.number_input("User ID to Delete", step=1, key="d_id")
+            confirm = st.checkbox(f"Confirm Delete ID {target_d}")
+            if st.button("Delete User", type="primary"):
+                if confirm:
+                    requests.delete(f"{API_URL}/admin/delete_user/{target_d}")
+                    st.warning("User deleted.")
+                    st.rerun()
+                else:
+                    st.error("Check confirmation box!")
