@@ -124,3 +124,20 @@ class DatabaseManager:
                     df = pd.read_csv("data/exercises.csv")
                     df.to_sql("exercises", conn, if_exists="append", index=False)
                 except: pass
+
+    def update_user_details(self, user_id, username, age, height, weight, goal, frequency, is_admin):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            query = """
+                UPDATE users 
+                SET username = ?, age = ?, height = ?, weight = ?, goal = ?, frequency = ?, is_admin = ?
+                WHERE id = ?
+            """
+            cursor.execute(query, (username, age, height, weight, goal, frequency, is_admin, user_id))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"DB Update Error: {e}")
+            return False

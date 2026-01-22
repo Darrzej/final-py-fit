@@ -168,31 +168,56 @@ with tabs[3]:
             z_cols[i].metric(zone, f"{val} kg")
 
 # TAB 4: ADMIN PANEL (WITH DELETE)
+# Inside TAB 4: ADMIN PANEL
 if user['is_admin']:
     with tabs[4]:
-        st.header("👑 Admin Panel")
+        st.header("👑 Admin Command Center")
+        
+        # 1. View all users (to see IDs)
         all_users = requests.get(f"{API_URL}/admin/users").json()
-        st.dataframe(pd.DataFrame(all_users), use_container_width=True)
+        df_users = pd.DataFrame(all_users)
+        st.subheader("Current User Directory")
+        st.dataframe(df_users, use_container_width=True)
         
         st.divider()
-        c1, c2 = st.columns(2)
         
-        with c1:
-            st.subheader("Promote")
-            target_p = st.number_input("User ID to Promote", step=1, key="p_id")
-            if st.button("Promote to Admin"):
-                requests.post(f"{API_URL}/admin/promote/{target_p}")
-                st.success("User promoted.")
-                st.rerun()
+        # 2. Edit User Section
+        st.subheader("📝 Edit User Profiles")
+        edit_id = st.number_input("Enter User ID to edit", step=1, min_value=1)
+        
+        # Find the specific user in the list to pre-fill the form
+        user_to_edit = next((u for u in all_users if u['id'] == edit_id), None)
+        
+        if user_to_edit:
+            with st.form("edit_user_form"):
+                col1, col2 = st.columns(2)
                 
-        with c2:
-            st.subheader("Delete")
-            target_d = st.number_input("User ID to Delete", step=1, key="d_id")
-            confirm = st.checkbox(f"Confirm Delete ID {target_d}")
-            if st.button("Delete User", type="primary"):
-                if confirm:
-                    requests.delete(f"{API_URL}/admin/delete_user/{target_d}")
-                    st.warning("User deleted.")
-                    st.rerun()
-                else:
-                    st.error("Check confirmation box!")
+                new_name = col1.text_input("Username", value=user_to_edit['username'])
+                new_age = col2.number_input("Age", value=user_to_edit['age'])
+                new_h = col1.number_input("Height (cm)", value=user_to_edit['height'])
+                new_w = col2.number_input("Weight (kg)", value=user_to_edit['weight'])
+                
+                goals = ["bulk", "cut", "strength"]
+                new_goal = col1.selectbox("Goal", goals, index=goals.index(user_to_edit['goal']))
+                new_freq = col2.slider("Frequency", 1, 7, value=user_to_edit['frequency'])
+                
+                new_admin = st.checkbox("Admin Privileges", value=bool(user_to_edit['is_admin']))
+                
+                if st.form_submit_button("Update User"):
+                    update_payload = {
+                        "username": new_name,
+                        "age": new_age,
+                        "height": new_h,
+                        "weight": new_w,
+                        "goal": new_goal,
+                        "frequency": new_freq,
+                        "is_admin": 1 if new_admin else 0
+                    }
+                    res = requests.put(f"{API_URL}/admin/update_user/{edit_id}", json=update_payload)
+                    if res.status_code == 200:
+                        st.success(f"User {edit_id} updated successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to update user.")
+        else:
+            st.info("Select a valid User ID to begin editing.")

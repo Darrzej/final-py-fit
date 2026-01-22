@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from api.models.user import UserCreate, UserLogin
+from api.models.user import UserCreate, UserLogin, UserUpdate
 from api.models.exercise import WorkoutLog, ExerciseAction
 from api.models.nutrition import NutritionLog
 from api.models.coach import CoachRequest, OneRMRequest
@@ -149,3 +149,13 @@ def delete_user(user_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
     return {"status": "deleted"}
+
+@app.put("/admin/update_user/{user_id}")
+def update_user(user_id: int, data: UserUpdate):
+    success = db.update_user_details(
+        user_id, data.username, data.age, data.height, 
+        data.weight, data.goal, data.frequency, data.is_admin
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Update failed")
+    return {"status": "success"}

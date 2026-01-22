@@ -16,3 +16,12 @@ class UserLogin(BaseModel):
 
 class UserDelete(BaseModel):
     user_id: int
+
+class UserUpdate(BaseModel):
+    username: str
+    age: int
+    height: float
+    weight: float
+    goal: str
+    frequency: int
+    is_admin: int
