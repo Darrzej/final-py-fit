@@ -113,21 +113,29 @@ with tabs[0]:
     
     with st.expander("🔍 Add Exercises to Your Program"):
         with st.container(border=True):
-            search = st.text_input("🔎 Search exercises...", placeholder="Type to search")
+            search = st.text_input("🔎 Search exercises...", placeholder="Type to filter exercises")
+            
+            # Get all exercises that can be added (not already in user's program)
+            available_exercises = [ex for ex in all_ex_list if ex['id'] not in my_ex_ids]
+            
+            # Filter by search term if provided
             if search:
-                found_exercises = [ex for ex in all_ex_list if ex['id'] not in my_ex_ids and search.lower() in ex['name'].lower()]
-                if found_exercises:
-                    for ex in found_exercises:
-                        col1, col2 = st.columns([3, 1])
-                        col1.write(f"**{ex['name']}**")
-                        if col2.button("➕ Add", key=f"a_{ex['id']}", use_container_width=True):
-                            requests.post(f"{API_URL}/exercises/add", json={"user_id": u_id, "exercise_id": ex['id']})
-                            st.toast(f"✅ Added {ex['name']}")
-                            st.rerun()
-                else:
-                    st.info("No exercises found. Try a different search term.")
+                available_exercises = [ex for ex in available_exercises if search.lower() in ex['name'].lower()]
+            
+            if available_exercises:
+                st.caption(f"📋 Showing {len(available_exercises)} available exercise(s)")
+                for ex in available_exercises:
+                    col1, col2 = st.columns([3, 1])
+                    col1.write(f"**{ex['name']}**")
+                    if col2.button("➕ Add", key=f"a_{ex['id']}", use_container_width=True):
+                        requests.post(f"{API_URL}/exercises/add", json={"user_id": u_id, "exercise_id": ex['id']})
+                        st.toast(f"✅ Added {ex['name']}")
+                        st.rerun()
             else:
-                st.caption("Start typing to search for exercises...")
+                if search:
+                    st.info("🔍 No exercises found matching your search. Try a different term.")
+                else:
+                    st.info("✅ All available exercises have been added to your program!")
     
     st.divider()
     
@@ -312,14 +320,15 @@ with tabs[3]:
                 st.success(f"💪 **Estimated 1RM: {res['one_rm']} kg**")
                 st.caption("Based on your lift of {:.1f} kg for {} reps".format(w_val, r_val))
             
-            st.divider()
-            
-            st.subheader("📈 Training Zones")
-            z_cols = st.columns(3)
-            for i, (zone, val) in enumerate(res['zones'].items()):
-                with z_cols[i]:
-                    with st.container(border=True):
-                        st.metric(zone, f"{val} kg")
+            if 'zones' in res:
+                st.divider()
+                
+                st.subheader("📈 Training Zones")
+                z_cols = st.columns(3)
+                for i, (zone, val) in enumerate(res['zones'].items()):
+                    with z_cols[i]:
+                        with st.container(border=True):
+                            st.metric(zone, f"{val} kg")
 
 # TAB 4: ADMIN PANEL (WITH DELETE)
 # Inside TAB 4: ADMIN PANEL
@@ -346,8 +355,63 @@ if user['is_admin']:
                 else:
                     st.info("No users found in the database.")
             
-            # Your existing "Edit User" and "Delete User" logic goes here
-            # (Keep the code I gave you in the previous response)
+            st.divider()
+            
+            # Edit User Section
+            with st.container(border=True):
+                st.subheader("✏️ Edit User")
+                edit_user_id = st.number_input("👤 User ID to Edit", step=1, min_value=1, key="edit_user_id")
+                
+                # Find the user to edit
+                user_to_edit = next((u for u in all_users if u['id'] == edit_user_id), None)
+                
+                if user_to_edit:
+                    with st.form("edit_user_form"):
+                        col1, col2 = st.columns(2)
+                        new_username = col1.text_input("👤 Username", value=user_to_edit.get('username', ''))
+                        new_age = col1.number_input("🎂 Age", min_value=15, max_value=100, value=int(user_to_edit.get('age', 25)), step=1)
+                        new_height = col2.number_input("📏 Height (cm)", min_value=100.0, max_value=250.0, value=float(user_to_edit.get('height', 175)), step=0.1)
+                        new_weight = col2.number_input("⚖️ Weight (kg)", min_value=30.0, max_value=300.0, value=float(user_to_edit.get('weight', 70)), step=0.1)
+                        new_goal = col1.selectbox("🎯 Goal", ["bulk", "cut", "strength"], 
+                                                  index=["bulk", "cut", "strength"].index(user_to_edit.get('goal', 'bulk')) if user_to_edit.get('goal') in ["bulk", "cut", "strength"] else 0)
+                        new_freq = col2.slider("📅 Training Frequency", min_value=1, max_value=7, value=int(user_to_edit.get('frequency', 3)), step=1)
+                        new_is_admin = col1.checkbox("👑 Admin Status", value=bool(user_to_edit.get('is_admin', 0)))
+                        
+                        submitted = st.form_submit_button("💾 Update User", use_container_width=True)
+                        
+                    if submitted:
+                        payload = {
+                            "username": new_username,
+                            "age": new_age,
+                            "height": new_height,
+                            "weight": new_weight,
+                            "goal": new_goal,
+                            "frequency": new_freq,
+                            "is_admin": 1 if new_is_admin else 0
+                        }
+                        response = requests.put(f"{API_URL}/admin/update_user/{edit_user_id}", json=payload)
+                        if response.status_code == 200:
+                            st.success("✅ User updated successfully!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Failed to update user: {response.text}")
+                else:
+                    st.info("👆 Select a valid User ID from the table above to edit.")
+            
+            st.divider()
+            
+            # Delete User Section
+            with st.container(border=True):
+                st.subheader("🗑️ Delete User")
+                delete_user_id = st.number_input("👤 User ID to Delete", step=1, min_value=1, key="delete_user_id")
+                
+                if st.button("⚠️ Permanently Delete User", type="primary", use_container_width=True):
+                    response = requests.delete(f"{API_URL}/admin/delete_user/{delete_user_id}")
+                    if response.status_code == 200:
+                        st.success("✅ User deleted successfully!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed to delete user: {response.text}")
 
         # --- VIEW: EXERCISES ---
         elif target_table == "Exercises":
