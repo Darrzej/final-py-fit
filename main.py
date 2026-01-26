@@ -19,29 +19,42 @@ if "user" not in st.session_state:
 # --- AUTHENTICATION ---
 if st.session_state.user is None:
     st.title("🏋️ FitAI — Professional Training System")
-    t1, t2 = st.tabs(["Login", "Register"])
+    st.caption("Your intelligent fitness companion powered by AI")
+    
+    t1, t2 = st.tabs(["🔐 Login", "📝 Register"])
+    
     with t1:
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        if st.button("Login"):
-            res = requests.post(f"{API_URL}/auth/login", json={"username": u, "password": p})
-            if res.status_code == 200:
-                st.session_state.user = res.json()
-                st.rerun()
-            else: st.error("Invalid credentials.")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            with st.container(border=True):
+                st.subheader("Welcome Back")
+                u = st.text_input("👤 Username", placeholder="Enter your username")
+                p = st.text_input("🔒 Password", type="password", placeholder="Enter your password")
+                if st.button("🚀 Login", type="primary", use_container_width=True):
+                    res = requests.post(f"{API_URL}/auth/login", json={"username": u, "password": p})
+                    if res.status_code == 200:
+                        st.session_state.user = res.json()
+                        st.rerun()
+                    else: 
+                        st.error("❌ Invalid credentials. Please try again.")
+    
     with t2:
-        ru = st.text_input("New Username")
-        rp = st.text_input("New Password", type="password")
-        c1, c2 = st.columns(2)
-        age = c1.number_input("Age", 15, 100, 25)
-        height = c2.number_input("Height (cm)", 100, 250, 175)
-        weight = c1.number_input("Weight (kg)", 30, 300, 70)
-        goal = c2.selectbox("Goal", ["bulk", "cut", "strength"])
-        freq = c1.slider("Frequency", 1, 7, 3)
-        if st.button("Create Account"):
-            payload = {"username":ru, "password":rp, "age":age, "height":height, "weight":weight, "goal":goal, "frequency":freq}
-            requests.post(f"{API_URL}/auth/register", json=payload)
-            st.success("Account created successfully!")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            with st.container(border=True):
+                st.subheader("Create Your Account")
+                ru = st.text_input("👤 New Username", placeholder="Choose a username")
+                rp = st.text_input("🔒 New Password", type="password", placeholder="Create a password")
+                c1, c2 = st.columns(2)
+                age = c1.number_input("🎂 Age", 15, 100, 25)
+                height = c2.number_input("📏 Height (cm)", 100, 250, 175)
+                weight = c1.number_input("⚖️ Weight (kg)", 30, 300, 70)
+                goal = c2.selectbox("🎯 Goal", ["bulk", "cut", "strength"])
+                freq = c1.slider("📅 Training Frequency (days/week)", 1, 7, 3)
+                if st.button("✨ Create Account", type="primary", use_container_width=True):
+                    payload = {"username":ru, "password":rp, "age":age, "height":height, "weight":weight, "goal":goal, "frequency":freq}
+                    requests.post(f"{API_URL}/auth/register", json=payload)
+                    st.success("✅ Account created successfully! Please login.")
     st.stop()
 
 user = st.session_state.user
@@ -50,18 +63,37 @@ u_id = user['id']
 # --- SIDEBAR ---
 with st.sidebar:
     st.markdown(f"## 👤 {user['username']}")
-    st.metric("Body BMI", np.round(user['weight'] / ((user['height']/100)**2), 1))
+    st.caption(f"Goal: {user['goal'].title()}")
+    
     st.divider()
-    st.subheader("🍎 Quick Nutrition Log")
-    cal = st.number_input("Calories", 0, 10000, 2500)
-    prot = st.number_input("Protein", 0, 500, 140)
-    if st.button("Save Daily Log"):
-        requests.post(f"{API_URL}/log/nutrition", json={"user_id": u_id, "calories": cal, "protein": prot, "date": datetime.now().strftime("%Y-%m-%d")})
-        st.toast("Saved & Mirrored to CSV")
+    
+    with st.container(border=True):
+        st.subheader("📊 Body Metrics")
+        bmi = np.round(user['weight'] / ((user['height']/100)**2), 1)
+        st.metric("BMI", bmi)
+        st.caption(f"Weight: {user['weight']} kg")
+        st.caption(f"Height: {user['height']} cm")
+    
     st.divider()
+    
+    with st.container(border=True):
+        st.subheader("🍎 Quick Nutrition Log")
+        cal = st.number_input("🔥 Calories", 0, 10000, 2500, help="Daily calorie intake")
+        prot = st.number_input("🥩 Protein (g)", 0, 500, 140, help="Daily protein intake")
+        if st.button("💾 Save Daily Log", type="primary", use_container_width=True):
+            requests.post(f"{API_URL}/log/nutrition", json={"user_id": u_id, "calories": cal, "protein": prot, "date": datetime.now().strftime("%Y-%m-%d")})
+            st.toast("✅ Saved & Mirrored to CSV")
+    
+    st.divider()
+    
+    st.caption("📰 Latest Fitness News")
     with st.spinner("Fetching news..."):
-        for h in scraper.get_latest_articles(): st.caption(f"📍 {h}")
-    if st.button("🚪 Logout"):
+        for h in scraper.get_latest_articles(): 
+            st.caption(f"📍 {h}")
+    
+    st.divider()
+    
+    if st.button("🚪 Logout", use_container_width=True):
         st.session_state.user = None
         st.rerun()
 
@@ -72,152 +104,363 @@ tabs = st.tabs(titles)
 
 # TAB 0: PROGRAM
 with tabs[0]:
-    st.header("Training Routine")
+    st.header("🏋️ Training Routine")
+    st.caption("Log your workouts and track your progress")
+    
     my_ex = requests.get(f"{API_URL}/exercises/user/{u_id}").json()
     all_ex_list = requests.get(f"{API_URL}/exercises/all").json()
     my_ex_ids = {e['id'] for e in my_ex}
     
-    with st.expander("🔍 Add Exercises"):
-        search = st.text_input("Search...")
-        for ex in all_ex_list:
-            if ex['id'] not in my_ex_ids and search.lower() in ex['name'].lower():
-                if st.button(f"Add {ex['name']}", key=f"a_{ex['id']}"):
-                    requests.post(f"{API_URL}/exercises/add", json={"user_id": u_id, "exercise_id": ex['id']})
-                    st.rerun()
+    with st.expander("🔍 Add Exercises to Your Program"):
+        with st.container(border=True):
+            search = st.text_input("🔎 Search exercises...", placeholder="Type to search")
+            if search:
+                found_exercises = [ex for ex in all_ex_list if ex['id'] not in my_ex_ids and search.lower() in ex['name'].lower()]
+                if found_exercises:
+                    for ex in found_exercises:
+                        col1, col2 = st.columns([3, 1])
+                        col1.write(f"**{ex['name']}**")
+                        if col2.button("➕ Add", key=f"a_{ex['id']}", use_container_width=True):
+                            requests.post(f"{API_URL}/exercises/add", json={"user_id": u_id, "exercise_id": ex['id']})
+                            st.toast(f"✅ Added {ex['name']}")
+                            st.rerun()
+                else:
+                    st.info("No exercises found. Try a different search term.")
+            else:
+                st.caption("Start typing to search for exercises...")
     
-    for ex in my_ex:
-        c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 1, 1])
-        c1.write(f"### {ex['name']}")
-        w = c2.number_input("kg", 0.0, 500.0, step=2.5, key=f"w_{ex['id']}")
-        r = c3.number_input("reps", 1, 50, 8, key=f"r_{ex['id']}")
-        if c4.button("Log", key=f"l_{ex['id']}"):
-            requests.post(f"{API_URL}/log/workout", json={"user_id": u_id, "exercise_id": ex['id'], "weight": w, "reps": r, "date": datetime.now().strftime("%Y-%m-%d")})
-            st.toast("PR Logged!")
-        if c5.button("🗑️", key=f"d_{ex['id']}"):
-            requests.post(f"{API_URL}/exercises/remove", json={"user_id": u_id, "exercise_id": ex['id']})
-            st.rerun()
+    st.divider()
+    
+    if my_ex:
+        st.subheader("📋 Your Exercises")
+        for ex in my_ex:
+            with st.container(border=True):
+                st.markdown(f"### 🏋️ {ex['name']}")
+                col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+                w = col1.number_input("⚖️ Weight (kg)", 0.0, 500.0, step=2.5, key=f"w_{ex['id']}", label_visibility="collapsed")
+                col1.caption("Weight (kg)")
+                r = col2.number_input("🔢 Reps", 1, 50, 8, key=f"r_{ex['id']}", label_visibility="collapsed")
+                col2.caption("Reps")
+                if col3.button("📝 Log Workout", key=f"l_{ex['id']}", type="primary", use_container_width=True):
+                    requests.post(f"{API_URL}/log/workout", json={"user_id": u_id, "exercise_id": ex['id'], "weight": w, "reps": r, "date": datetime.now().strftime("%Y-%m-%d")})
+                    st.toast("🎉 PR Logged!")
+                if col4.button("🗑️", key=f"d_{ex['id']}", help="Remove exercise"):
+                    requests.post(f"{API_URL}/exercises/remove", json={"user_id": u_id, "exercise_id": ex['id']})
+                    st.rerun()
+    else:
+        st.info("👆 Add exercises to your program using the search above to get started!")
 
-# TAB 1: ANALYTICS
+# TAB 1: ANALYTICS (PRO VERSION)
 with tabs[1]:
-    st.header("📊 Performance Analytics")
+    st.markdown("### 📊 Performance & Metabolic Insights")
+    st.caption("Track your fitness journey with detailed analytics")
+    
+    # 1. TOP LEVEL METRICS
     nutri_data = requests.get(f"{API_URL}/data/nutrition/{u_id}").json()
-    if nutri_data:
-        ndf = pd.DataFrame(nutri_data)
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-        fig.add_trace(go.Scatter(x=ndf['date'], y=ndf['total_calories'], name="Calories", line=dict(color='#FFA500', width=3)), secondary_y=False)
-        fig.add_trace(go.Scatter(x=ndf['date'], y=ndf['total_protein'], name="Protein", line=dict(color='#00BFFF', width=3)), secondary_y=True)
-        fig.update_layout(template="plotly_dark", height=400)
-        st.plotly_chart(fig, use_container_width=True)
-
     stats_data = requests.get(f"{API_URL}/data/stats/{u_id}").json()
-    if stats_data:
-        sdf = pd.DataFrame(stats_data)
-        st.plotly_chart(px.line(sdf, x="updated_at", y="pr", color="name", markers=True, template="plotly_dark"), use_container_width=True)
+    
+    with st.container(border=True):
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        
+        if nutri_data:
+            ndf = pd.DataFrame(nutri_data)
+            avg_cal = int(ndf['total_calories'].mean())
+            avg_prot = int(ndf['total_protein'].mean())
+            m_col1.metric("🔥 Avg Daily Calories", f"{avg_cal} kcal", delta=None)
+            m_col2.metric("🥩 Avg Daily Protein", f"{avg_prot} g", delta=None)
+        else:
+            m_col1.metric("🔥 Avg Daily Calories", "N/A", delta=None)
+            m_col2.metric("🥩 Avg Daily Protein", "N/A", delta=None)
+        
+        m_col3.metric("⚖️ Current Weight", f"{user['weight']} kg")
+        bmi = np.round(user['weight'] / ((user['height']/100)**2), 1)
+        m_col4.metric("📊 Body BMI", bmi)
+
+    st.divider()
+
+    # 2. METABOLIC TRENDS (Nutrition)
+    with st.container(border=True):
+        st.subheader("🍎 Metabolic Consistency")
+        if nutri_data:
+            ndf = pd.DataFrame(nutri_data)
+            ndf['date'] = pd.to_datetime(ndf['date'])
+            
+            fig_nutri = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            # Calories - Area Chart for "Volume" feel
+            fig_nutri.add_trace(go.Scatter(
+                x=ndf['date'], y=ndf['total_calories'], 
+                name="Calories", fill='tozeroy',
+                line=dict(color='#00FFAA', width=3),
+                marker=dict(size=8)
+            ), secondary_y=False)
+            
+            # Protein - Line Chart
+            fig_nutri.add_trace(go.Scatter(
+                x=ndf['date'], y=ndf['total_protein'], 
+                name="Protein",
+                line=dict(color='#FF0077', width=4, dash='dot'),
+            ), secondary_y=True)
+
+            fig_nutri.update_layout(
+                template="plotly_dark",
+                hovermode="x unified",
+                margin=dict(l=20, r=20, t=30, b=20),
+                height=350,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                yaxis=dict(showgrid=False, title="Energy (kcal)"),
+                yaxis2=dict(showgrid=False, title="Recovery (g)"),
+                xaxis=dict(showgrid=False)
+            )
+            st.plotly_chart(fig_nutri, use_container_width=True)
+        else:
+            st.info("📝 Log your meals to see metabolic trends.")
+
+    st.divider()
+
+    # 3. STRENGTH PROGRESSION
+    with st.container(border=True):
+        st.subheader("⚡ Strength Progression")
+        if stats_data:
+            sdf = pd.DataFrame(stats_data)
+            sdf['updated_at'] = pd.to_datetime(sdf['updated_at'])
+            
+            # Cleaner Line Plot using Plotly Express
+            fig_stats = px.line(
+                sdf, x="updated_at", y="pr", color="name",
+                markers=True, line_shape="spline", # Smooth lines
+                template="plotly_dark",
+                labels={"pr": "Weight (kg)", "updated_at": "Date", "name": "Exercise"}
+            )
+            
+            fig_stats.update_layout(
+                height=400,
+                hovermode="closest",
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+            )
+            fig_stats.update_traces(line=dict(width=4), marker=dict(size=10))
+            
+            st.plotly_chart(fig_stats, use_container_width=True)
+        else:
+            st.info("🏋️ Log your workouts to see strength analytics.")
 
 # TAB 2: AI COACH (ENHANCED)
 with tabs[2]:
     st.header("🤖 FitAI Intelligence Report")
+    st.caption("Get personalized insights and recommendations from your AI coach")
     
-    if st.button("Generate Performance & Nutrition Report", type="primary"):
-        with st.spinner("Analyzing performance trends and metabolic logs..."):
-            s_data = requests.get(f"{API_URL}/data/stats/{u_id}").json()
-            n_data = requests.get(f"{API_URL}/data/nutrition/{u_id}").json()
+    with st.container(border=True):
+        if st.button("🚀 Generate Performance & Nutrition Report", type="primary", use_container_width=True):
+            with st.spinner("🔍 Analyzing performance trends and metabolic logs..."):
+                s_data = requests.get(f"{API_URL}/data/stats/{u_id}").json()
+                n_data = requests.get(f"{API_URL}/data/nutrition/{u_id}").json()
+                
+                payload = {
+                    "username": user['username'], 
+                    "weight": float(user['weight']), 
+                    "age": int(user['age']),         
+                    "goal": str(user['goal']), 
+                    "stats": s_data, 
+                    "nutrition": n_data
+                }
+                
+                res = requests.post(f"{API_URL}/coach", json=payload).json()
             
-            payload = {
-                "username": user['username'], 
-                "weight": float(user['weight']), 
-                "age": int(user['age']),         
-                "goal": str(user['goal']), 
-                "stats": s_data, 
-                "nutrition": n_data
-            }
+            st.divider()
             
-            res = requests.post(f"{API_URL}/coach", json=payload).json()
-        
-        st.divider()
-        
-        if not res.get('report'):
-            st.info("I need more data to provide a tactical analysis. Log at least one workout and one meal.")
-        else:
-            # We group them for better UI flow
-            st.subheader("📋 Tactical Feedback")
-            for item in res['report']:
-                if item['type'] == "strength":
-                    st.info(item['msg'], icon="💪")
-                elif item['type'] == "warning":
-                    st.warning(item['msg'], icon="⚠️")
-                elif item['type'] == "plateau":
-                    st.error(item['msg'], icon="🛑")
-                elif item['type'] == "success":
-                    st.success(item['msg'], icon="✅")
-                else:
-                    st.chat_message("assistant").write(item['msg'])
-            
-            st.balloons() 
+            if not res.get('report'):
+                st.info("📊 I need more data to provide a tactical analysis. Log at least one workout and one meal.")
+            else:
+                # We group them for better UI flow
+                st.subheader("📋 Tactical Feedback")
+                for item in res['report']:
+                    with st.container(border=True):
+                        if item['type'] == "strength":
+                            st.info(item['msg'], icon="💪")
+                        elif item['type'] == "warning":
+                            st.warning(item['msg'], icon="⚠️")
+                        elif item['type'] == "plateau":
+                            st.error(item['msg'], icon="🛑")
+                        elif item['type'] == "success":
+                            st.success(item['msg'], icon="✅")
+                        else:
+                            st.chat_message("assistant").write(item['msg'])
+                
+                st.balloons() 
 # TAB 3: CALCULATORS
 with tabs[3]:
     st.header("🧮 1RM Predictor")
-    cw, cr = st.columns(2)
-    w_val = cw.number_input("Weight (kg)", 1.0, 500.0, 100.0)
-    r_val = cr.number_input("Reps", 1, 20, 5)
-    if st.button("Predict Max"):
-        res = requests.post(f"{API_URL}/predict_1rm", json={"weight": w_val, "reps": r_val}).json()
-        st.metric("Estimated 1RM", f"{res['one_rm']} kg")
-        z_cols = st.columns(3)
-        for i, (zone, val) in enumerate(res['zones'].items()):
-            z_cols[i].metric(zone, f"{val} kg")
+    st.caption("Calculate your one-rep max and training zones")
+    
+    with st.container(border=True):
+        st.subheader("📊 Enter Your Lift Details")
+        cw, cr = st.columns(2)
+        w_val = cw.number_input("⚖️ Weight (kg)", 1.0, 500.0, 100.0, help="Weight lifted")
+        r_val = cr.number_input("🔢 Reps", 1, 20, 5, help="Number of reps completed")
+        
+        if st.button("🎯 Predict Max", type="primary", use_container_width=True):
+            res = requests.post(f"{API_URL}/predict_1rm", json={"weight": w_val, "reps": r_val}).json()
+            
+            st.divider()
+            
+            with st.container(border=True):
+                st.success(f"💪 **Estimated 1RM: {res['one_rm']} kg**")
+                st.caption("Based on your lift of {:.1f} kg for {} reps".format(w_val, r_val))
+            
+            st.divider()
+            
+            st.subheader("📈 Training Zones")
+            z_cols = st.columns(3)
+            for i, (zone, val) in enumerate(res['zones'].items()):
+                with z_cols[i]:
+                    with st.container(border=True):
+                        st.metric(zone, f"{val} kg")
 
 # TAB 4: ADMIN PANEL (WITH DELETE)
 # Inside TAB 4: ADMIN PANEL
 if user['is_admin']:
     with tabs[4]:
-        st.header("👑 Admin Command Center")
+        st.header("👑 Global Database Management")
+        st.caption("Administrative controls for managing the system")
         
-        # 1. View all users (to see IDs)
-        all_users = requests.get(f"{API_URL}/admin/users").json()
-        df_users = pd.DataFrame(all_users)
-        st.subheader("Current User Directory")
-        st.dataframe(df_users, use_container_width=True)
+        # TABLE SELECTOR
+        with st.container(border=True):
+            target_table = st.selectbox("📋 Select Table to Manage", 
+                                        ["Users", "Exercises", "Workout Logs", "Nutrition Logs"],
+                                        help="Choose which database table to view and manage")
         
         st.divider()
-        
-        # 2. Edit User Section
-        st.subheader("📝 Edit User Profiles")
-        edit_id = st.number_input("Enter User ID to edit", step=1, min_value=1)
-        
-        # Find the specific user in the list to pre-fill the form
-        user_to_edit = next((u for u in all_users if u['id'] == edit_id), None)
-        
-        if user_to_edit:
-            with st.form("edit_user_form"):
-                col1, col2 = st.columns(2)
+
+        # --- VIEW: USERS (Your existing logic + extra) ---
+        if target_table == "Users":
+            with st.container(border=True):
+                st.subheader("👥 User Management")
+                all_users = requests.get(f"{API_URL}/admin/users").json()
+                if all_users:
+                    st.dataframe(pd.DataFrame(all_users), use_container_width=True, hide_index=True)
+                else:
+                    st.info("No users found in the database.")
+            
+            # Your existing "Edit User" and "Delete User" logic goes here
+            # (Keep the code I gave you in the previous response)
+
+        # --- VIEW: EXERCISES ---
+        elif target_table == "Exercises":
+            with st.container(border=True):
+                st.subheader("🏋️ Master Exercise Library")
                 
-                new_name = col1.text_input("Username", value=user_to_edit['username'])
-                new_age = col2.number_input("Age", value=user_to_edit['age'])
-                new_h = col1.number_input("Height (cm)", value=user_to_edit['height'])
-                new_w = col2.number_input("Weight (kg)", value=user_to_edit['weight'])
+                # Add New Exercise
+                with st.expander("➕ Add New Exercise to Database"):
+                    with st.container(border=True):
+                        new_ex_name = st.text_input("📝 Exercise Name", placeholder="e.g., Barbell Squat")
+                        new_ex_muscle = st.text_input("🎯 Target Muscle Group", "Full Body", placeholder="e.g., Legs, Chest, Back")
+                        if st.button("💾 Save Exercise", type="primary", use_container_width=True):
+                            requests.post(f"{API_URL}/admin/exercises/add", json={"name": new_ex_name, "muscle_group": new_ex_muscle})
+                            st.success("✅ Added to library!")
+                            st.rerun()
+
+            st.divider()
+
+            # View/Delete Exercises
+            with st.container(border=True):
+                st.subheader("📊 Exercise Database")
+                ex_list = requests.get(f"{API_URL}/exercises/all").json()
+                if ex_list:
+                    df_ex = pd.DataFrame(ex_list)
+                    st.dataframe(df_ex, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No exercises found in the database.")
+            
+            st.divider()
+            
+            with st.container(border=True):
+                st.subheader("🗑️ Delete Exercise")
+                ex_del_id = st.number_input("Exercise ID to Delete", step=1, min_value=1)
+                if st.button("⚠️ Permanently Delete Exercise", type="primary", use_container_width=True):
+                    requests.delete(f"{API_URL}/admin/table/exercises/{ex_del_id}")
+                    st.success("✅ Exercise deleted!")
+                    st.rerun()
+
+        # --- VIEW: WORKOUT LOGS ---
+        elif target_table == "Workout Logs":
+            with st.container(border=True):
+                st.subheader("📝 Edit Workout History")
+                u_search = st.number_input("🔍 Filter by User ID", value=1, step=1, min_value=1)
+                # You'll need a route to get all logs, for now we use stats
+                logs = requests.get(f"{API_URL}/data/stats/{u_search}").json()
                 
-                goals = ["bulk", "cut", "strength"]
-                new_goal = col1.selectbox("Goal", goals, index=goals.index(user_to_edit['goal']))
-                new_freq = col2.slider("Frequency", 1, 7, value=user_to_edit['frequency'])
+                if logs:
+                    df_logs = pd.DataFrame(logs)
+                    st.dataframe(df_logs, use_container_width=True, hide_index=True)
+                    
+                    st.divider()
+                    
+                    with st.container(border=True):
+                        st.subheader("✏️ Edit Log Entry")
+                        log_id = st.number_input("Log Entry ID to Edit", step=1, min_value=1)
+                        c1, c2 = st.columns(2)
+                        new_w = c1.number_input("⚖️ New Weight (kg)", value=0.0, min_value=0.0)
+                        new_r = c2.number_input("🔢 New Reps", value=0, step=1, min_value=0)
+                        
+                        if st.button("💾 Update Log Entry", type="primary", use_container_width=True):
+                            requests.put(f"{API_URL}/admin/logs/workout/{log_id}", json={"weight": new_w, "reps": new_r})
+                            st.success("✅ Log updated.")
+                            st.rerun()
+                else:
+                    st.info("📭 No logs found for this user.")
+
+        # --- VIEW: NUTRITION LOGS ---
+        elif target_table == "Nutrition Logs":
+            with st.container(border=True):
+                st.subheader("🍎 Global Nutrition Records")
                 
-                new_admin = st.checkbox("Admin Privileges", value=bool(user_to_edit['is_admin']))
+                # Add a filter so the Admin can look up ANY user's nutrition
+                u_search_nutri = st.number_input("🔍 Filter by User ID", value=u_id, step=1, min_value=1, key="nutri_search")
                 
-                if st.form_submit_button("Update User"):
-                    update_payload = {
-                        "username": new_name,
-                        "age": new_age,
-                        "height": new_h,
-                        "weight": new_w,
-                        "goal": new_goal,
-                        "frequency": new_freq,
-                        "is_admin": 1 if new_admin else 0
-                    }
-                    res = requests.put(f"{API_URL}/admin/update_user/{edit_id}", json=update_payload)
-                    if res.status_code == 200:
-                        st.success(f"User {edit_id} updated successfully!")
-                        st.rerun()
+                response = requests.get(f"{API_URL}/data/nutrition/{u_search_nutri}")
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data:
+                        df = pd.DataFrame(data)
+                        df.columns = ["Date", "Total Calories (kcal)", "Total Protein (g)"]
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                        
+                        st.divider()
+                        
+                        col1, col2 = st.columns(2)
+                        col1.metric("🔥 Avg Calories", f"{int(df['Total Calories (kcal)'].mean())} kcal")
+                        col2.metric("🥩 Avg Protein", f"{int(df['Total Protein (g)'].mean())}g")
                     else:
-                        st.error("Failed to update user.")
-        else:
-            st.info("Select a valid User ID to begin editing.")
+                        st.info(f"📭 No nutrition logs found for User ID {u_search_nutri}")
+                else:
+                    st.error("❌ Could not fetch nutrition data.")
+
+            st.divider()
+
+            # --- ADDING THE INPUT FORM ---
+            with st.container(border=True):
+                st.subheader(f"➕ Manually Log Meal for User {u_search_nutri}")
+                with st.form("nutrition_form_admin"):
+                    cals = st.number_input("🔥 Calories", min_value=0, step=10, value=0)
+                    prot = st.number_input("🥩 Protein (g)", min_value=0, step=1, value=0)
+                    date = st.date_input("📅 Date")
+                    
+                    if st.form_submit_button("💾 Save Log", use_container_width=True):
+                        log_data = {
+                            "user_id": u_search_nutri, # Uses the ID from the search box
+                            "calories": cals,
+                            "protein": prot,
+                            "date": str(date)
+                        }
+                        res = requests.post(f"{API_URL}/log/nutrition", json=log_data)
+                        if res.status_code == 200:
+                            st.success("✅ Log saved!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to save log.")

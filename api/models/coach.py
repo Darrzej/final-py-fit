@@ -12,3 +12,11 @@ class CoachRequest(BaseModel):
 class OneRMRequest(BaseModel):
     weight: float
     reps: int
+
+class ExerciseCreate(BaseModel):
+    name: str
+
+class LogUpdate(BaseModel):
+    val1: float
+    val2: float
+

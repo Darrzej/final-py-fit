@@ -37,8 +37,8 @@ class DatabaseManager:
             cursor.execute("CREATE TABLE IF NOT EXISTS user_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, exercise_id INTEGER, pr REAL, reps INTEGER, updated_at TEXT)")
             cursor.execute("CREATE TABLE IF NOT EXISTS user_nutrition (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, calories INTEGER, protein INTEGER, date TEXT)")
             conn.commit()
-        # Initial sync for safety
-        for t in ['users', 'exercises', 'user_stats', 'user_nutrition']: self._sync_to_csv(t)
+        for t in ['users', 'exercises', 'user_stats', 'user_nutrition']: 
+            self._sync_to_csv(t)
 
     def add_user(self, username, password, age, height, weight, goal, frequency, is_admin=0):
         hashed = hash_password(password)
@@ -51,14 +51,16 @@ class DatabaseManager:
                 conn.commit()
             self._sync_to_csv('users')
             return True
-        except sqlite3.IntegrityError: return False
+        except sqlite3.IntegrityError: 
+            return False
 
     def get_user(self, username, password):
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id, username, password, age, height, weight, goal, frequency, is_admin FROM users WHERE username = ?", (username,))
             user = cursor.fetchone()
-            if user and verify_password(user[2], password): return user
+            if user and verify_password(user[2], password): 
+                return user
         return None
 
     def get_all_users(self):
@@ -88,7 +90,8 @@ class DatabaseManager:
             return pd.read_sql(query, conn, params=(user_id,))
 
     def get_exercises(self):
-        with self.get_connection() as conn: return pd.read_sql("SELECT * FROM exercises", conn)
+        with self.get_connection() as conn: 
+            return pd.read_sql("SELECT * FROM exercises", conn)
 
     def add_user_exercise(self, user_id, exercise_id):
         with self.get_connection() as conn:
@@ -117,27 +120,40 @@ class DatabaseManager:
             conn.commit()
         self._sync_to_csv('users')
 
-    def seed_exercises(self):
-        with self.get_connection() as conn:
-            if conn.execute("SELECT COUNT(*) FROM exercises").fetchone()[0] == 0:
-                try:
-                    df = pd.read_csv("data/exercises.csv")
-                    df.to_sql("exercises", conn, if_exists="append", index=False)
-                except: pass
-
     def update_user_details(self, user_id, username, age, height, weight, goal, frequency, is_admin):
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            query = """
-                UPDATE users 
-                SET username = ?, age = ?, height = ?, weight = ?, goal = ?, frequency = ?, is_admin = ?
-                WHERE id = ?
-            """
-            cursor.execute(query, (username, age, height, weight, goal, frequency, is_admin, user_id))
-            conn.commit()
-            conn.close()
+            with self.get_connection() as conn:
+                query = """
+                    UPDATE users 
+                    SET username = ?, age = ?, height = ?, weight = ?, goal = ?, frequency = ?, is_admin = ?
+                    WHERE id = ?
+                """
+                conn.execute(query, (username, age, height, weight, goal, frequency, is_admin, user_id))
+                conn.commit()
+            self._sync_to_csv('users')
             return True
         except Exception as e:
             print(f"DB Update Error: {e}")
             return False
+
+    def add_master_exercise(self, name, muscle_group="General"):
+        with self.get_connection() as conn:
+            conn.execute("INSERT INTO exercises (name, muscle_group) VALUES (?, ?)", (name, muscle_group))
+            conn.commit()
+        self._sync_to_csv('exercises')
+
+    def delete_from_table(self, table_name, row_id):
+        with self.get_connection() as conn:
+            conn.execute(f"DELETE FROM {table_name} WHERE id = ?", (row_id,))
+            conn.commit()
+        self._sync_to_csv(table_name)
+
+    def update_log(self, table, row_id, val1, val2):
+        with self.get_connection() as conn:
+            if table == "user_stats":
+                # workout stats use 'pr' and 'reps'
+                conn.execute("UPDATE user_stats SET pr = ?, reps = ? WHERE id = ?", (val1, val2, row_id))
+            elif table == "user_nutrition":
+                conn.execute("UPDATE user_nutrition SET calories = ?, protein = ? WHERE id = ?", (val1, val2, row_id))
+            conn.commit()
+        self._sync_to_csv(table)

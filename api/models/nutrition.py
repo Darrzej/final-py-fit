@@ -5,3 +5,11 @@ class NutritionLog(BaseModel):
     calories: int
     protein: int
     date: str
+
+class WorkoutUpdate(BaseModel):
+    weight: float
+    reps: int
+
+class NutritionUpdate(BaseModel):
+    calories: int
+    protein: int
