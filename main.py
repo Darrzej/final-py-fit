@@ -11,6 +11,33 @@ from utils.scraper import FitnessScraper
 API_URL = "http://127.0.0.1:8000"
 scraper = FitnessScraper()
 
+
+def safe_request_json(method, url: str, friendly_name: str = "data", **kwargs):
+    """
+    Wrapper around requests.* that:
+    - Catches connection errors and shows a clear message
+    - Checks status_code before .json()
+    - Catches JSON decode errors
+    """
+    try:
+        resp = method(url, **kwargs)
+    except requests.exceptions.ConnectionError:
+        st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+        return None
+    except Exception:
+        st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+        return None
+
+    if resp.status_code != 200:
+        st.warning(f"⚠️ Could not load {friendly_name} (server returned {resp.status_code}).")
+        return None
+
+    try:
+        return resp.json()
+    except ValueError:
+        st.error("⚠️ Received invalid data from the FitAI Server.")
+        return None
+
 st.set_page_config(page_title="FitAI Ultimate", page_icon="💪", layout="wide")
 
 if "user" not in st.session_state:
@@ -31,12 +58,23 @@ if st.session_state.user is None:
                 u = st.text_input("👤 Username", placeholder="Enter your username")
                 p = st.text_input("🔒 Password", type="password", placeholder="Enter your password")
                 if st.button("🚀 Login", type="primary", use_container_width=True):
-                    res = requests.post(f"{API_URL}/auth/login", json={"username": u, "password": p})
-                    if res.status_code == 200:
-                        st.session_state.user = res.json()
-                        st.rerun()
-                    else: 
-                        st.error("❌ Invalid credentials. Please try again.")
+                    try:
+                        res = requests.post(f"{API_URL}/auth/login", json={"username": u, "password": p})
+                    except requests.exceptions.ConnectionError:
+                        st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                    except Exception:
+                        st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                    else:
+                        if res.status_code == 200:
+                            try:
+                                st.session_state.user = res.json()
+                                st.rerun()
+                            except ValueError:
+                                st.error("⚠️ Received invalid login data from the server.")
+                        elif res.status_code == 401:
+                            st.error("❌ Invalid credentials. Please try again.")
+                        else:
+                            st.warning(f"⚠️ Login failed (server returned {res.status_code}). Please try again later.")
     
     with t2:
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -51,10 +89,19 @@ if st.session_state.user is None:
                 weight = c1.number_input("⚖️ Weight (kg)", 30, 300, 70)
                 goal = c2.selectbox("🎯 Goal", ["bulk", "cut", "strength"])
                 freq = c1.slider("📅 Training Frequency (days/week)", 1, 7, 3)
-                if st.button("✨ Create Account", type="primary", use_container_width=True):
-                    payload = {"username":ru, "password":rp, "age":age, "height":height, "weight":weight, "goal":goal, "frequency":freq}
-                    requests.post(f"{API_URL}/auth/register", json=payload)
+        if st.button("✨ Create Account", type="primary", use_container_width=True):
+            payload = {"username":ru, "password":rp, "age":age, "height":height, "weight":weight, "goal":goal, "frequency":freq}
+            try:
+                res = requests.post(f"{API_URL}/auth/register", json=payload)
+            except requests.exceptions.ConnectionError:
+                st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+            except Exception:
+                st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+            else:
+                if res.status_code == 200:
                     st.success("✅ Account created successfully! Please login.")
+                else:
+                    st.warning(f"⚠️ Registration failed (server returned {res.status_code}). Please try again later.")
     st.stop()
 
 user = st.session_state.user
@@ -69,8 +116,13 @@ with st.sidebar:
     
     with st.container(border=True):
         st.subheader("📊 Body Metrics")
-        bmi = np.round(user['weight'] / ((user['height']/100)**2), 1)
-        st.metric("BMI", bmi)
+        height_m = (user['height'] / 100) if user['height'] else 0
+        if height_m > 0:
+            bmi = np.round(user['weight'] / (height_m**2), 1)
+            bmi_display = str(bmi)
+        else:
+            bmi_display = "N/A"
+        st.metric("BMI", bmi_display)
         st.caption(f"Weight: {user['weight']} kg")
         st.caption(f"Height: {user['height']} cm")
     
@@ -81,8 +133,25 @@ with st.sidebar:
         cal = st.number_input("🔥 Calories", 0, 10000, 2500, help="Daily calorie intake")
         prot = st.number_input("🥩 Protein (g)", 0, 500, 140, help="Daily protein intake")
         if st.button("💾 Save Daily Log", type="primary", use_container_width=True):
-            requests.post(f"{API_URL}/log/nutrition", json={"user_id": u_id, "calories": cal, "protein": prot, "date": datetime.now().strftime("%Y-%m-%d")})
-            st.toast("✅ Saved & Mirrored to CSV")
+            try:
+                res = requests.post(
+                    f"{API_URL}/log/nutrition",
+                    json={
+                        "user_id": u_id,
+                        "calories": cal,
+                        "protein": prot,
+                        "date": datetime.now().strftime("%Y-%m-%d"),
+                    },
+                )
+            except requests.exceptions.ConnectionError:
+                st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+            except Exception:
+                st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+            else:
+                if res.status_code == 200:
+                    st.toast("✅ Saved & Mirrored to CSV")
+                else:
+                    st.warning(f"⚠️ Failed to save nutrition log (server returned {res.status_code}).")
     
     st.divider()
     
@@ -107,8 +176,8 @@ with tabs[0]:
     st.header("🏋️ Training Routine")
     st.caption("Log your workouts and track your progress")
     
-    my_ex = requests.get(f"{API_URL}/exercises/user/{u_id}").json()
-    all_ex_list = requests.get(f"{API_URL}/exercises/all").json()
+    my_ex = safe_request_json(requests.get, f"{API_URL}/exercises/user/{u_id}", "user exercises") or []
+    all_ex_list = safe_request_json(requests.get, f"{API_URL}/exercises/all", "exercise list") or []
     my_ex_ids = {e['id'] for e in my_ex}
     
     with st.expander("🔍 Add Exercises to Your Program"):
@@ -128,9 +197,21 @@ with tabs[0]:
                     col1, col2 = st.columns([3, 1])
                     col1.write(f"**{ex['name']}**")
                     if col2.button("➕ Add", key=f"a_{ex['id']}", use_container_width=True):
-                        requests.post(f"{API_URL}/exercises/add", json={"user_id": u_id, "exercise_id": ex['id']})
-                        st.toast(f"✅ Added {ex['name']}")
-                        st.rerun()
+                        try:
+                            res = requests.post(
+                                f"{API_URL}/exercises/add",
+                                json={"user_id": u_id, "exercise_id": ex['id']},
+                            )
+                        except requests.exceptions.ConnectionError:
+                            st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                        except Exception:
+                            st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                        else:
+                            if res.status_code == 200:
+                                st.toast(f"✅ Added {ex['name']}")
+                                st.rerun()
+                            else:
+                                st.warning(f"⚠️ Failed to add exercise (server returned {res.status_code}).")
             else:
                 if search:
                     st.info("🔍 No exercises found matching your search. Try a different term.")
@@ -150,11 +231,41 @@ with tabs[0]:
                 r = col2.number_input("🔢 Reps", 1, 50, 8, key=f"r_{ex['id']}", label_visibility="collapsed")
                 col2.caption("Reps")
                 if col3.button("📝 Log Workout", key=f"l_{ex['id']}", type="primary", use_container_width=True):
-                    requests.post(f"{API_URL}/log/workout", json={"user_id": u_id, "exercise_id": ex['id'], "weight": w, "reps": r, "date": datetime.now().strftime("%Y-%m-%d")})
-                    st.toast("🎉 PR Logged!")
+                    try:
+                        res = requests.post(
+                            f"{API_URL}/log/workout",
+                            json={
+                                "user_id": u_id,
+                                "exercise_id": ex['id'],
+                                "weight": w,
+                                "reps": r,
+                                "date": datetime.now().strftime("%Y-%m-%d"),
+                            },
+                        )
+                    except requests.exceptions.ConnectionError:
+                        st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                    except Exception:
+                        st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                    else:
+                        if res.status_code == 200:
+                            st.toast("🎉 PR Logged!")
+                        else:
+                            st.warning(f"⚠️ Failed to log workout (server returned {res.status_code}).")
                 if col4.button("🗑️", key=f"d_{ex['id']}", help="Remove exercise"):
-                    requests.post(f"{API_URL}/exercises/remove", json={"user_id": u_id, "exercise_id": ex['id']})
-                    st.rerun()
+                    try:
+                        res = requests.post(
+                            f"{API_URL}/exercises/remove",
+                            json={"user_id": u_id, "exercise_id": ex['id']},
+                        )
+                    except requests.exceptions.ConnectionError:
+                        st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                    except Exception:
+                        st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                    else:
+                        if res.status_code == 200:
+                            st.rerun()
+                        else:
+                            st.warning(f"⚠️ Failed to remove exercise (server returned {res.status_code}).")
     else:
         st.info("👆 Add exercises to your program using the search above to get started!")
 
@@ -164,8 +275,8 @@ with tabs[1]:
     st.caption("Track your fitness journey with detailed analytics")
     
     # 1. TOP LEVEL METRICS
-    nutri_data = requests.get(f"{API_URL}/data/nutrition/{u_id}").json()
-    stats_data = requests.get(f"{API_URL}/data/stats/{u_id}").json()
+    nutri_data = safe_request_json(requests.get, f"{API_URL}/data/nutrition/{u_id}", "nutrition data") or []
+    stats_data = safe_request_json(requests.get, f"{API_URL}/data/stats/{u_id}", "stats data") or []
     
     with st.container(border=True):
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
@@ -181,8 +292,13 @@ with tabs[1]:
             m_col2.metric("🥩 Avg Daily Protein", "N/A", delta=None)
         
         m_col3.metric("⚖️ Current Weight", f"{user['weight']} kg")
-        bmi = np.round(user['weight'] / ((user['height']/100)**2), 1)
-        m_col4.metric("📊 Body BMI", bmi)
+        height_m = (user['height'] / 100) if user['height'] else 0
+        if height_m > 0:
+            bmi_val = np.round(user['weight'] / (height_m**2), 1)
+            bmi_display = str(bmi_val)
+        else:
+            bmi_display = "N/A"
+        m_col4.metric("📊 Body BMI", bmi_display)
 
     st.divider()
 
@@ -265,19 +381,19 @@ with tabs[2]:
     with st.container(border=True):
         if st.button("🚀 Generate Performance & Nutrition Report", type="primary", use_container_width=True):
             with st.spinner("🔍 Analyzing performance trends and metabolic logs..."):
-                s_data = requests.get(f"{API_URL}/data/stats/{u_id}").json()
-                n_data = requests.get(f"{API_URL}/data/nutrition/{u_id}").json()
-                
+                s_data = safe_request_json(requests.get, f"{API_URL}/data/stats/{u_id}", "stats data") or []
+                n_data = safe_request_json(requests.get, f"{API_URL}/data/nutrition/{u_id}", "nutrition data") or []
+
                 payload = {
-                    "username": user['username'], 
-                    "weight": float(user['weight']), 
-                    "age": int(user['age']),         
-                    "goal": str(user['goal']), 
-                    "stats": s_data, 
-                    "nutrition": n_data
+                    "username": user['username'],
+                    "weight": float(user['weight']),
+                    "age": int(user['age']),
+                    "goal": str(user['goal']),
+                    "stats": s_data,
+                    "nutrition": n_data,
                 }
-                
-                res = requests.post(f"{API_URL}/coach", json=payload).json()
+
+                res = safe_request_json(requests.post, f"{API_URL}/coach", "coach report", json=payload) or {}
             
             st.divider()
             
@@ -312,23 +428,29 @@ with tabs[3]:
         r_val = cr.number_input("🔢 Reps", 1, 20, 5, help="Number of reps completed")
         
         if st.button("🎯 Predict Max", type="primary", use_container_width=True):
-            res = requests.post(f"{API_URL}/predict_1rm", json={"weight": w_val, "reps": r_val}).json()
-            
-            st.divider()
-            
-            with st.container(border=True):
-                st.success(f"💪 **Estimated 1RM: {res['one_rm']} kg**")
-                st.caption("Based on your lift of {:.1f} kg for {} reps".format(w_val, r_val))
-            
-            if 'zones' in res:
+            res = safe_request_json(
+                requests.post,
+                f"{API_URL}/predict_1rm",
+                "1RM prediction",
+                json={"weight": w_val, "reps": r_val},
+            ) or {}
+
+            if "one_rm" in res:
                 st.divider()
-                
-                st.subheader("📈 Training Zones")
-                z_cols = st.columns(3)
-                for i, (zone, val) in enumerate(res['zones'].items()):
-                    with z_cols[i]:
-                        with st.container(border=True):
-                            st.metric(zone, f"{val} kg")
+
+                with st.container(border=True):
+                    st.success(f"💪 **Estimated 1RM: {res['one_rm']} kg**")
+                    st.caption("Based on your lift of {:.1f} kg for {} reps".format(w_val, r_val))
+
+                if "zones" in res:
+                    st.divider()
+
+                    st.subheader("📈 Training Zones")
+                    z_cols = st.columns(3)
+                    for i, (zone, val) in enumerate(res['zones'].items()):
+                        with z_cols[i]:
+                            with st.container(border=True):
+                                st.metric(zone, f"{val} kg")
 
 # TAB 4: ADMIN PANEL (WITH DELETE)
 # Inside TAB 4: ADMIN PANEL
@@ -345,11 +467,11 @@ if user['is_admin']:
         
         st.divider()
 
-        # --- VIEW: USERS (Your existing logic + extra) ---
+        
         if target_table == "Users":
             with st.container(border=True):
                 st.subheader("👥 User Management")
-                all_users = requests.get(f"{API_URL}/admin/users").json()
+                all_users = safe_request_json(requests.get, f"{API_URL}/admin/users", "user list") or []
                 if all_users:
                     st.dataframe(pd.DataFrame(all_users), use_container_width=True, hide_index=True)
                 else:
@@ -357,12 +479,12 @@ if user['is_admin']:
             
             st.divider()
             
-            # Edit User Section
+           
             with st.container(border=True):
                 st.subheader("✏️ Edit User")
                 edit_user_id = st.number_input("👤 User ID to Edit", step=1, min_value=1, key="edit_user_id")
                 
-                # Find the user to edit
+                
                 user_to_edit = next((u for u in all_users if u['id'] == edit_user_id), None)
                 
                 if user_to_edit:
@@ -389,12 +511,18 @@ if user['is_admin']:
                             "frequency": new_freq,
                             "is_admin": 1 if new_is_admin else 0
                         }
-                        response = requests.put(f"{API_URL}/admin/update_user/{edit_user_id}", json=payload)
-                        if response.status_code == 200:
-                            st.success("✅ User updated successfully!")
-                            st.rerun()
+                        try:
+                            response = requests.put(f"{API_URL}/admin/update_user/{edit_user_id}", json=payload)
+                        except requests.exceptions.ConnectionError:
+                            st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                        except Exception:
+                            st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
                         else:
-                            st.error(f"❌ Failed to update user: {response.text}")
+                            if response.status_code == 200:
+                                st.success("✅ User updated successfully!")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Failed to update user (server returned {response.status_code}).")
                 else:
                     st.info("👆 Select a valid User ID from the table above to edit.")
             
@@ -406,12 +534,18 @@ if user['is_admin']:
                 delete_user_id = st.number_input("👤 User ID to Delete", step=1, min_value=1, key="delete_user_id")
                 
                 if st.button("⚠️ Permanently Delete User", type="primary", use_container_width=True):
-                    response = requests.delete(f"{API_URL}/admin/delete_user/{delete_user_id}")
-                    if response.status_code == 200:
-                        st.success("✅ User deleted successfully!")
-                        st.rerun()
+                    try:
+                        response = requests.delete(f"{API_URL}/admin/delete_user/{delete_user_id}")
+                    except requests.exceptions.ConnectionError:
+                        st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                    except Exception:
+                        st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
                     else:
-                        st.error(f"❌ Failed to delete user: {response.text}")
+                        if response.status_code == 200:
+                            st.success("✅ User deleted successfully!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Failed to delete user (server returned {response.status_code}).")
 
         # --- VIEW: EXERCISES ---
         elif target_table == "Exercises":
@@ -424,16 +558,28 @@ if user['is_admin']:
                         new_ex_name = st.text_input("📝 Exercise Name", placeholder="e.g., Barbell Squat")
                         new_ex_muscle = st.text_input("🎯 Target Muscle Group", "Full Body", placeholder="e.g., Legs, Chest, Back")
                         if st.button("💾 Save Exercise", type="primary", use_container_width=True):
-                            requests.post(f"{API_URL}/admin/exercises/add", json={"name": new_ex_name, "muscle_group": new_ex_muscle})
-                            st.success("✅ Added to library!")
-                            st.rerun()
+                            try:
+                                res = requests.post(
+                                    f"{API_URL}/admin/exercises/add",
+                                    json={"name": new_ex_name, "muscle_group": new_ex_muscle},
+                                )
+                            except requests.exceptions.ConnectionError:
+                                st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                            except Exception:
+                                st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                            else:
+                                if res.status_code == 200:
+                                    st.success("✅ Added to library!")
+                                    st.rerun()
+                                else:
+                                    st.warning(f"⚠️ Failed to add exercise (server returned {res.status_code}).")
 
             st.divider()
 
             # View/Delete Exercises
             with st.container(border=True):
                 st.subheader("📊 Exercise Database")
-                ex_list = requests.get(f"{API_URL}/exercises/all").json()
+                ex_list = safe_request_json(requests.get, f"{API_URL}/exercises/all", "exercise list") or []
                 if ex_list:
                     df_ex = pd.DataFrame(ex_list)
                     st.dataframe(df_ex, use_container_width=True, hide_index=True)
@@ -446,17 +592,26 @@ if user['is_admin']:
                 st.subheader("🗑️ Delete Exercise")
                 ex_del_id = st.number_input("Exercise ID to Delete", step=1, min_value=1)
                 if st.button("⚠️ Permanently Delete Exercise", type="primary", use_container_width=True):
-                    requests.delete(f"{API_URL}/admin/table/exercises/{ex_del_id}")
-                    st.success("✅ Exercise deleted!")
-                    st.rerun()
+                    try:
+                        res = requests.delete(f"{API_URL}/admin/table/exercises/{ex_del_id}")
+                    except requests.exceptions.ConnectionError:
+                        st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                    except Exception:
+                        st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                    else:
+                        if res.status_code == 200:
+                            st.success("✅ Exercise deleted!")
+                            st.rerun()
+                        else:
+                            st.warning(f"⚠️ Failed to delete exercise (server returned {res.status_code}).")
 
         # --- VIEW: WORKOUT LOGS ---
         elif target_table == "Workout Logs":
             with st.container(border=True):
                 st.subheader("📝 Edit Workout History")
                 u_search = st.number_input("🔍 Filter by User ID", value=1, step=1, min_value=1)
-                # You'll need a route to get all logs, for now we use stats
-                logs = requests.get(f"{API_URL}/data/stats/{u_search}").json()
+                
+                logs = safe_request_json(requests.get, f"{API_URL}/data/stats/{u_search}", "workout logs") or []
                 
                 if logs:
                     df_logs = pd.DataFrame(logs)
@@ -472,9 +627,21 @@ if user['is_admin']:
                         new_r = c2.number_input("🔢 New Reps", value=0, step=1, min_value=0)
                         
                         if st.button("💾 Update Log Entry", type="primary", use_container_width=True):
-                            requests.put(f"{API_URL}/admin/logs/workout/{log_id}", json={"weight": new_w, "reps": new_r})
-                            st.success("✅ Log updated.")
-                            st.rerun()
+                            try:
+                                res = requests.put(
+                                    f"{API_URL}/admin/logs/workout/{log_id}",
+                                    json={"weight": new_w, "reps": new_r},
+                                )
+                            except requests.exceptions.ConnectionError:
+                                st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                            except Exception:
+                                st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                            else:
+                                if res.status_code == 200:
+                                    st.success("✅ Log updated.")
+                                    st.rerun()
+                                else:
+                                    st.warning(f"⚠️ Failed to update log (server returned {res.status_code}).")
                 else:
                     st.info("📭 No logs found for this user.")
 
@@ -486,10 +653,21 @@ if user['is_admin']:
                 # Add a filter so the Admin can look up ANY user's nutrition
                 u_search_nutri = st.number_input("🔍 Filter by User ID", value=u_id, step=1, min_value=1, key="nutri_search")
                 
-                response = requests.get(f"{API_URL}/data/nutrition/{u_search_nutri}")
+                try:
+                    response = requests.get(f"{API_URL}/data/nutrition/{u_search_nutri}")
+                except requests.exceptions.ConnectionError:
+                    st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                    response = None
+                except Exception:
+                    st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
+                    response = None
 
-                if response.status_code == 200:
-                    data = response.json()
+                if response and response.status_code == 200:
+                    try:
+                        data = response.json()
+                    except ValueError:
+                        st.error("⚠️ Received invalid nutrition data from the server.")
+                        data = None
                     if data:
                         df = pd.DataFrame(data)
                         df.columns = ["Date", "Total Calories (kcal)", "Total Protein (g)"]
@@ -522,9 +700,15 @@ if user['is_admin']:
                             "protein": prot,
                             "date": str(date)
                         }
-                        res = requests.post(f"{API_URL}/log/nutrition", json=log_data)
-                        if res.status_code == 200:
-                            st.success("✅ Log saved!")
-                            st.rerun()
+                        try:
+                            res = requests.post(f"{API_URL}/log/nutrition", json=log_data)
+                        except requests.exceptions.ConnectionError:
+                            st.error("🔌 Unable to connect to the FitAI Server. Please check if the backend is running.")
+                        except Exception:
+                            st.error("⚠️ An unexpected error occurred while contacting the FitAI Server.")
                         else:
-                            st.error("❌ Failed to save log.")
+                            if res.status_code == 200:
+                                st.success("✅ Log saved!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to save log.")
